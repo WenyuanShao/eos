@@ -468,9 +468,9 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 		__asm__ __volatile__("rep;nop": : :"memory");
 	}
 
-	chain = fwp_create_chain_bridge();
+	/* chain = fwp_create_chain_bridge(); */
 	/* chain = fwp_create_chain_firewall(); */
-	/* chain = fwp_create_chain_multi_tency(1); */
+	chain = fwp_create_chain_multi_tency(1);
 	/* chain = fwp_create_chain_multi_tency_share(6); */
 	fwp_allocate_chain(chain, 1, 0);
 
@@ -480,7 +480,7 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 			fwp_allocate_chain(chain, 0, i);
 		}
 	}
-	printc("dbg chain alloca done\n");
+	printc("dbg %d chains alloca done\n", (NF_MAX_CORE - NF_MIN_CORE) * EOS_MAX_CHAIN_NUM_PER_CORE);
 
 	/* for(i=0; i<3; i++) { */
 	/* 	printc("dbg spin %d\n", i); */

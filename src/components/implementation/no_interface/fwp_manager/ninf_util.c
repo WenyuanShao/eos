@@ -1,8 +1,8 @@
 #include "ninf.h"
 #include "ninf_util.h"
 
-#define RX_RING_SIZE    512
-#define TX_RING_SIZE    128
+#define RX_RING_SIZE    1024
+#define TX_RING_SIZE    256
 #define MBUF_CACHE_SIZE 250
 #define RX_MBUF_DATA_SIZE 2048
 #define RX_MBUF_SIZE (RX_MBUF_DATA_SIZE + RTE_PKTMBUF_HEADROOM + sizeof(struct rte_mbuf))

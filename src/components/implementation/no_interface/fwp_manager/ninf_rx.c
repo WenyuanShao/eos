@@ -12,7 +12,7 @@
 #define DPDK_PKT_OFF 256
 #define NF_PER_CORE_BATCH 1
 #define DPDK_PKT2MBUF(pkt) ((struct rte_mbuf *)((void *)(pkt) - DPDK_PKT_OFF))
-#define IN2OUT_PORT(port) (!(port))
+#define IN2OUT_PORT(port) ((port))
 
 struct rte_mempool *rx_mbuf_pool;
 struct eos_ring *ninf_ft_data[EOS_MAX_FLOW_NUM];
