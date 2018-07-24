@@ -3,7 +3,6 @@
 
 #define RX_RING_SIZE    2048
 #define TX_RING_SIZE    256
-#define MBUF_CACHE_SIZE 250
 #define RX_MBUF_DATA_SIZE 2048
 #define RX_MBUF_SIZE (RX_MBUF_DATA_SIZE + RTE_PKTMBUF_HEADROOM + sizeof(struct rte_mbuf))
 
@@ -152,7 +151,7 @@ dpdk_init(void)
 	assert(nb_ports == NUM_NIC_PORTS);
 	/* printc("%d ports available.\n", nb_ports); */
 
-	rx_mbuf_pool = rte_pktmbuf_pool_create("RX_MBUF_POOL", NUM_MBUFS * nb_ports, 0, 0, RX_MBUF_SIZE, -1);
+	rx_mbuf_pool = rte_pktmbuf_pool_create("RX_MBUF_POOL", NUM_MBUFS * nb_ports, MBUF_CACHE_SIZE, 0, RX_MBUF_SIZE, -1);
 	if (!rx_mbuf_pool) return -2;
 
 	if (rte_eth_dev_cos_setup_ports(nb_ports, rx_mbuf_pool) < 0)

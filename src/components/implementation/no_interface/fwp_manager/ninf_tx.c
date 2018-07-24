@@ -62,7 +62,7 @@ ninf_tx_init()
 	tx_fl[i].next = NULL;
 	tx = NULL;
 	for(i=0; i<NUM_NIC_PORTS; i++) burst_cnt[i] = 0;
-	tx_mbuf_pool = rte_pktmbuf_pool_create("TX_MBUF_POOL", TX_NUM_MBUFS * NUM_NIC_PORTS, 0, 0, TX_MBUF_SIZE, -1);
+	tx_mbuf_pool = rte_pktmbuf_pool_create("TX_MBUF_POOL", TX_NUM_MBUFS * NUM_NIC_PORTS, MBUF_CACHE_SIZE, 0, TX_MBUF_SIZE, -1);
 }
 
 struct tx_ring *

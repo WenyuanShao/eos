@@ -20,6 +20,7 @@
 
 #define NUM_NIC_PORTS 2
 #define NUM_MBUFS 4096
+#define MBUF_CACHE_SIZE 512
 #define BURST_SIZE 32
 #define IP_PROTOCOL_TCP 6
 #define IP_PROTOCOL_UDP 17
