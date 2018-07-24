@@ -44,6 +44,8 @@ ninf_pkt_collect(struct eos_ring *r)
 		n->state = PKT_EMPTY;
 		r->head++;
 		ret++;
+		nxt = (struct eos_ring_node *)GET_RING_NODE(r, r->head & EOS_RING_MASK);
+		__builtin_prefetch(nxt, 1);
 	}
 
 	return ret * EOS_PKT_PER_ENTRY;

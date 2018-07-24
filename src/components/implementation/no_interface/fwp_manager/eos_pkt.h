@@ -178,6 +178,8 @@ collect:
 		recv->head++;
 		sent->head++;
 		r++;
+		nxt = (struct eos_ring_node *)GET_RING_NODE(sent, (sent->head+1) & EOS_RING_MASK);
+		__builtin_prefetch(nxt, 1);
 		goto collect;
 	}
 	return r;

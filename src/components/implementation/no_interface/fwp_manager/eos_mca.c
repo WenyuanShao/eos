@@ -53,6 +53,8 @@ mca_transfer(struct eos_ring_node *sn, struct eos_ring_node *rn)
 	struct pkt_meta *rmeta, *smeta;
 
 	for(i=0; i<cnt; i++) {
+		__builtin_prefetch(sn->pkts[i+1].pkt, 0);
+		__builtin_prefetch(rn->pkts[i+1].pkt, 1);
 		smeta          = &(sn->pkts[i]);
 		rmeta          = &(rn->pkts[i]);
 		rmeta->pkt_len = smeta->pkt_len;
