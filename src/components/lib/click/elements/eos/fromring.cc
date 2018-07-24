@@ -57,6 +57,8 @@ extern "C"{
 	{
 		if (!(prev_collect--)) {
 			prev_collect = eos_pkt_collect(recv, sent)*EOS_PKT_PER_ENTRY;
+			if (!prev_collect) click_block();
+			else prev_collect--;
 		}
 		return prev_collect;
 	}
