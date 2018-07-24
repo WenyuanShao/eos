@@ -4,10 +4,9 @@
 #include "ninf.h"
 #include "ninf_util.h"
 
-#define TX_NUM_MBUFS 4096
+#define TX_NUM_MBUFS 1024
 #define TX_MBUF_DATA_SIZE 0
 #define TX_MBUF_SIZE (TX_MBUF_DATA_SIZE + RTE_PKTMBUF_HEADROOM + sizeof(struct rte_mbuf))
-#define NINF_TX_BATCH 2
 
 struct tx_ring {
 	struct eos_ring *r;
@@ -22,7 +21,7 @@ struct tx_pkt_batch {
 
 static struct tx_ring *tx, *tx_fl;
 static struct tx_ring tx_rings[EOS_MAX_CHAIN_NUM];
-static int batch_cnt, burst_cnt[NUM_NIC_PORTS];
+static burst_cnt[NUM_NIC_PORTS];
 static struct tx_pkt_batch send_batch[NUM_NIC_PORTS][BURST_SIZE];
 static struct rte_mempool *tx_mbuf_pool;
 static struct rte_mbuf *tx_batch_mbufs[BURST_SIZE] = {NULL};
@@ -62,7 +61,6 @@ ninf_tx_init()
 	}
 	tx_fl[i].next = NULL;
 	tx = NULL;
-	batch_cnt = 0;
 	for(i=0; i<NUM_NIC_PORTS; i++) burst_cnt[i] = 0;
 	tx_mbuf_pool = rte_pktmbuf_pool_create("TX_MBUF_POOL", TX_NUM_MBUFS * NUM_NIC_PORTS, 0, 0, TX_MBUF_SIZE, -1);
 }
@@ -141,15 +139,12 @@ ninf_tx_add_pkt(struct eos_ring *nf_ring, struct eos_ring_node *node)
 }
 
 static inline void
-ninf_tx_out_batch()
+ninf_tx_flush()
 {
 	int i;
 
-	if (batch_cnt++ == NINF_TX_BATCH) {
-		for(i=0; i<NUM_NIC_PORTS; i++) {
-			ninf_tx_nf_send_burst(send_batch[i], i);
-		}
-		batch_cnt = 0;
+	for(i=0; i<NUM_NIC_PORTS; i++) {
+		ninf_tx_nf_send_burst(send_batch[i], i);
 	}
 }
 
@@ -176,7 +171,7 @@ ninf_tx_process(struct eos_ring *nf_ring)
 		ret++;
 	}
 	if (ret) cos_faa(&(nf_ring->pkt_cnt), -ret);
-	ninf_tx_out_batch();
+	ninf_tx_flush();
 	return ret;
 }
 

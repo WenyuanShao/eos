@@ -2,6 +2,7 @@
 #include "ninf.h"
 #include "ninf_util.h"
 #include "eos_ring.h"
+#include "eos_pkt.h"
 
 #define MALLOC_BUMP_SZ (2*PAGE_SIZE)
 

@@ -23,6 +23,7 @@ static struct nf_chain *global_chain = NULL;
 static struct eos_ring *global_rx_out;
 static struct eos_ring *fix_rx_outs[EOS_MAX_FLOW_NUM] = {NULL};
 static int chain_idx = 0;
+static int tot_rx = 0;
 
 static inline int
 ninf_pkt_collect(struct eos_ring *r)
