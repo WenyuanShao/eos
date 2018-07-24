@@ -22,7 +22,7 @@ static int major_core_id, minor_core_id;
 static struct nf_chain *global_chain = NULL;
 static struct eos_ring *global_rx_out;
 static struct eos_ring *fix_rx_outs[EOS_MAX_FLOW_NUM] = {NULL};
-static int chain_idx = 0;
+static int chain_idx = 0, prev_collect = 32*EOS_PKT_PER_ENTRY;
 static int tot_rx = 0;
 
 static inline int
@@ -205,12 +205,14 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 	}
 	ninf_ring = ninf_get_nf_ring(mbuf);
 	assert(ninf_ring);
+	
 	do {
-		ninf_pkt_collect(ninf_ring);
+		if (prev_collect <= 0) prev_collect = ninf_pkt_collect(ninf_ring);
 		r = eos_pkt_send(ninf_ring, rte_pktmbuf_mtod(mbuf, void *), rte_pktmbuf_data_len(mbuf), IN2OUT_PORT(in_port));
 	} while (unlikely(r == -ECOLLET));
 	/* drop pkts */
 	if (unlikely(r)) rte_pktmbuf_free(mbuf);
+	else prev_collect--;
 }
 
 static inline void
