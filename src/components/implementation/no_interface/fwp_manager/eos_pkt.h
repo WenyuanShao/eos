@@ -63,14 +63,13 @@ eos_pkt_send(struct eos_ring *ring, void *pkt, int len, int port)
 	rn = GET_RING_NODE(ring, ring->tail & EOS_RING_MASK);
 	assert(rn);
 	if (!rn) printc("dbg pkt sent\n");
-	if (rn->state == PKT_SENT_DONE) return -ECOLLET;
-	else if (rn->state != PKT_EMPTY) {printc("dbg drop %d \n", rn->state); return -EBLOCK;}
-	/* else if (rn->state != PKT_EMPTY) return -EBLOCK; */
 	rn->pkt     = pkt;
 	rn->pkt_len = len;
 	rn->port    = port;
 	ps_cc_barrier();
 	rn->state   = PKT_SENT_READY;
+	if (unlikely(state == PKT_SENT_DONE)) return -ECOLLET;
+	else if (unlikely(state != PKT_EMPTY)) return -EBLOCK;
 	ring->tail++;
 	/* printc("S\n"); */
 	return 0;
@@ -87,8 +86,8 @@ eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err)
 		if (rn->state != PKT_EMPTY) break;
 		ring->tail++;
 	}
-	if (rn->state == PKT_RECV_READY) {
 		/* printc("R\n"); */
+	if (likely(rn->state == PKT_RECV_READY)) {
 		assert(rn->pkt);
 		assert(rn->pkt_len);
 		ret         = rn->pkt;
@@ -120,7 +119,6 @@ eos_pkt_collect(struct eos_ring *recv, struct eos_ring *sent)
 collect:
 	rn = GET_RING_NODE(recv, recv->head & EOS_RING_MASK);
 	sn = GET_RING_NODE(sent, sent->head & EOS_RING_MASK);
-	if ((rn->state == PKT_EMPTY || rn->state == PKT_RECV_DONE) && sn->state == PKT_SENT_DONE) {
 		rn->pkt     = sn->pkt;
 		rn->pkt_len = EOS_PKT_MAX_SZ;
 		sn->state   = PKT_EMPTY;
@@ -128,6 +126,7 @@ collect:
 		sn->pkt     = NULL;
 		sn->pkt_len = 0;
 		rn->state   = PKT_FREE;
+	if (likely((state == PKT_EMPTY || state == PKT_RECV_DONE) && sn->state  == PKT_SENT_DONE)) {
 		recv->head++;
 		sent->head++;
 		goto collect;

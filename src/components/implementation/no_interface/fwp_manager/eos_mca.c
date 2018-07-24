@@ -54,13 +54,13 @@ mca_process(struct mca_conn *conn)
 	src = conn->src_ring;
 	dst = conn->dst_ring;
 	sn  = GET_RING_NODE(src, src->mca_head & EOS_RING_MASK);
-	if (sn->state != PKT_SENT_READY) return -1;
+	if (unlikely(sn->state != PKT_SENT_READY)) return -1;
 	assert(sn->pkt);
 	assert(sn->pkt_len);
 	/* fh  = cos_faa(&(dst->free_head), 0); */
 	fh  = dst->free_head;
 	rn  = GET_RING_NODE(dst, fh & EOS_RING_MASK);
-	if (rn->state != PKT_FREE) return -1;
+	if (unlikely(rn->state != PKT_FREE)) return -1;
 	dst->free_head++;
 	assert(rn->pkt);
 	mca_copy(rn->pkt, sn->pkt, sn->pkt_len);
@@ -88,7 +88,7 @@ mca_scan(struct mca_conn **list)
 	p = list;
 	c = ps_load(p);
 	while (c) {
-		if (c->used) {
+		if (likely(c->used)) {
 			p = &(c->next);
 			mca_process(c);
 		} else {

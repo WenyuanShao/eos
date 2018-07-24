@@ -30,7 +30,6 @@ ninf_pkt_collect(struct eos_ring *r)
 {
 	volatile struct eos_ring_node *n;
 	n = GET_RING_NODE(r, r->head & EOS_RING_MASK);
-	if (n->state == PKT_SENT_DONE) {
 		rte_pktmbuf_free(DPDK_PKT2MBUF(n->pkt));
 		n->state   = PKT_EMPTY;
 		ps_cc_barrier();
@@ -114,7 +113,7 @@ static inline struct eos_ring *
 ninf_get_nf_ring(struct rte_mbuf *mbuf)
 {
 #ifdef NO_FLOW_ISOLATION
-	if (!global_chain) {
+	if (unlikely(!global_chain)) {
 		printc("dbg new flow\n");
 		global_chain = fwp_chain_get(FWP_CHAIN_CLEANED, NF_MIN_CORE);
 		assert(global_chain);
@@ -199,12 +198,9 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 	do {
 		ninf_pkt_collect(ninf_ring);
 		r = eos_pkt_send(ninf_ring, rte_pktmbuf_mtod(mbuf, void *), rte_pktmbuf_data_len(mbuf), IN2OUT_PORT(in_port));
-	} while (r == -ECOLLET);
+	} while (unlikely(r == -ECOLLET));
 	/* drop pkts */
-	if (r) {
-		/* printc("D %d\n", ninf_ring->tail & EOS_RING_MASK); */
-		rte_pktmbuf_free(mbuf);
-	}
+	if (unlikely(r)) rte_pktmbuf_free(mbuf);
 }
 
 static inline void
@@ -226,8 +222,9 @@ ninf_rx_loop()
 		i = (i+1) % EOS_MAX_FLOW_NUM;
 		for(port=0; port<NUM_NIC_PORTS; port++) {
 			const u16_t nb_rx = rte_eth_rx_burst(port, 0, rx_batch_mbufs, BURST_SIZE);
+
+			if (likely(nb_rx>0)) ninf_rx_proc_batch(rx_batch_mbufs, nb_rx, port);
 			tot_rx += nb_rx;
-			if (nb_rx) ninf_rx_proc_batch(rx_batch_mbufs, nb_rx, port);
 		}
 	}
 }

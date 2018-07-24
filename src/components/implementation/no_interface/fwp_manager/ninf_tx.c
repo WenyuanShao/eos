@@ -156,12 +156,12 @@ ninf_tx_process(struct eos_ring *nf_ring)
 	
 	while (1) {
 		sent = GET_RING_NODE(nf_ring, nf_ring->mca_head & EOS_RING_MASK);
+		if (unlikely(sent->state != PKT_SENT_READY)) break ;
 		if (sent->state == PKT_TXING) {
 			ninf_tx_out_batch();
 			/* r = ninf_tx_clean(); */
 			/* printc("dbg tx overflow tx \n"); */
 		}
-		if (sent->state != PKT_SENT_READY) break ;
 		assert(sent->pkt);
 		assert(sent->pkt_len);
 		/* printc("T\n"); */
@@ -183,7 +183,7 @@ ninf_tx_scan(struct tx_ring **p)
 
 	c = ps_load(p);
 	while (c) {
-		if (c->state) {
+		if (likely(c->state)) {
 			p = &(c->next);
 			ret += ninf_tx_process(c->r);
 		} else {
