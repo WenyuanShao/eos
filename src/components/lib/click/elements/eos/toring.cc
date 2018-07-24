@@ -99,7 +99,7 @@ ToRing::push(int port, Packet *p)
 
        assert(p);
        r = eos_pkt_send(output_ring, (void *)p->data(), p->length(), p->port());
-       while (r) {
+       while (unlikely(r)) {
 	       if (r == -EBLOCK) { printc("Q\n"); click_block();}
 	       else if (r == -ECOLLET) { printc("E\n"); dbg_click_pkt_collect(input_ring, output_ring);}
 	       r = eos_pkt_send(output_ring, (void *)p->data(), p->length(), p->port());

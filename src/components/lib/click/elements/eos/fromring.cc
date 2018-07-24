@@ -112,7 +112,7 @@ FromRing::run_task(Task *)
 
        dbg_click_pkt_collect(input_ring, ouput_ring);
        pkt = eos_pkt_recv(input_ring, &len, &port, &err);
-       while (!pkt) {
+       while (unlikely(!pkt)) {
 	       if (err == -EBLOCK) {
 		       // eos_pkt_send_flush(ouput_ring);
 		       click_block();
