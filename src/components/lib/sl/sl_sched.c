@@ -538,8 +538,8 @@ sl_idle(void *d)
 			sl_cs_enter();
 			sl_xcpu_process_no_cs();
 			sl_cs_exit();
-			sl_thd_yield(0);
 		}
+		sl_thd_yield(0);
 	}
 }
 

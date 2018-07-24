@@ -472,14 +472,15 @@ cos_init(void)
 		}
 
 		cos_defcompinfo_sched_init();
-		sl_init(SL_MIN_PERIOD_US);
 		switch (cur_coreid) {
 		case MCA_CORE:
+			sl_init(SL_MIN_PERIOD_US*1000);
 			cos_faa(&init_core_done, 1);
 			printc("mca_run core %d\n", MCA_CORE);
 			mca_run(NULL);
 			assert(0);
 		case NINF_RX_CORE:
+			sl_init(SL_MIN_PERIOD_US*1000);
 			ninf_rx_init();
 			rx_init_done = 1;
 			printc("ninf_rx_loop core %d\n", NINF_RX_CORE);
@@ -487,6 +488,7 @@ cos_init(void)
 			ninf_rx_loop();
 			assert(0);
 		case NINF_TX_CORE:
+			sl_init(SL_MIN_PERIOD_US*1000);
 			while (!rx_init_done) {
 				__asm__ __volatile__("rep;nop": : :"memory");
 			}
@@ -497,6 +499,7 @@ cos_init(void)
 			assert(0);
 		default:
 			/* printc("nf sl_sched_loop core %d\n", cur_coreid); */
+			sl_init(SL_MIN_PERIOD_US);
 			sl_sched_loop();
 			assert(0);
 		}
