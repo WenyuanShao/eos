@@ -46,7 +46,7 @@ static const struct rte_eth_txconf tx_conf = {
                 .hthresh = TX_HTHRESH,
                 .wthresh = TX_WTHRESH,
         },
-        .tx_free_thresh = TX_RING_SIZE - 8/* - TX_RING_SIZE / 4 */,
+        .tx_free_thresh = 0,
         .tx_rs_thresh   = 0,
         .txq_flags      = 0,
 };
@@ -97,7 +97,7 @@ port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 	/* Allocate and set up 1 TX queue per Ethernet port. */
 	for (q = 0; q < tx_rings; q++) {
 		retval = rte_eth_tx_queue_setup(port, q, nb_txd,
-				rte_eth_dev_socket_id(port), NULL);
+				rte_eth_dev_socket_id(port), &tx_conf);
 		if (retval < 0) return retval;
 	}
 
