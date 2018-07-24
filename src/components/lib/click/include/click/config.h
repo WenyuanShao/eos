@@ -108,7 +108,7 @@
 #define HAVE_NANOTIMESTAMP_ENABLED 1
 
 /* Define if you want to use the stride scheduler. */
-#define HAVE_STRIDE_SCHED 1
+/* #define HAVE_STRIDE_SCHED 1 */
 
 /* Define to 1 since we have Strings. */
 #define HAVE_STRING 1
