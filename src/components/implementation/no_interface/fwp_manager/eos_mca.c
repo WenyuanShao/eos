@@ -5,6 +5,7 @@
 #include "eos_pkt.h"
 
 #define MCA_CONN_MAX_NUM 1024
+#define MCA_BURST_CNT (32/EOS_PKT_PER_ENTRY)
 
 static struct mca_conn *fl, *lh;
 
@@ -44,32 +45,60 @@ mca_copy(void *dst, void *src, int sl)
 	memcpy(dst, src, sl);
 }
 
+static inline void
+mca_transfer(struct eos_ring_node *sn, struct eos_ring_node *rn)
+{
+	int i;
+	const int cnt = sn->cnt-1;
+	struct pkt_meta *rmeta, *smeta;
+
+	for(i=0; i<cnt; i++) {
+		smeta          = &(sn->pkts[i]);
+		rmeta          = &(rn->pkts[i]);
+		rmeta->pkt_len = smeta->pkt_len;
+		rmeta->port    = smeta->port;
+		mca_copy(rmeta->pkt, smeta->pkt, smeta->pkt_len);
+	}
+	smeta          = &(sn->pkts[cnt]);
+	rmeta          = &(rn->pkts[cnt]);
+	rmeta->pkt_len = smeta->pkt_len;
+	rmeta->port    = smeta->port;
+	mca_copy(rmeta->pkt, smeta->pkt, smeta->pkt_len);
+
+	rn->cnt   = sn->cnt;
+	rn->state = PKT_RECV_READY;
+}
+
 static inline int
-mca_process(struct mca_conn *conn)
+mca_process(struct mca_conn *conn, int burst)
 {
 	struct eos_ring *src, *dst;
 	volatile struct eos_ring_node *rn, *sn;
-	int fh;
+	struct eos_ring_node rcache, scache;
+	int fh, r = 0;
 
+loop:
 	src = conn->src_ring;
 	dst = conn->dst_ring;
 	sn  = GET_RING_NODE(src, src->mca_head & EOS_RING_MASK);
 	if (unlikely(sn->state != PKT_SENT_READY)) return -1;
-	assert(sn->pkt);
-	assert(sn->pkt_len);
+	assert(sn->cnt);
+
 	/* fh  = cos_faa(&(dst->free_head), 0); */
 	fh  = dst->free_head;
 	rn  = GET_RING_NODE(dst, fh & EOS_RING_MASK);
 	if (unlikely(rn->state != PKT_FREE)) return -1;
+	assert(!rn->cnt);
+
+	scache = *sn;
+	rcache = *rn;
+	mca_transfer(&scache, &rcache);
+	sn->state = PKT_SENT_DONE;
+	*rn       = rcache;
+
 	dst->free_head++;
-	assert(rn->pkt);
-	mca_copy(rn->pkt, sn->pkt, sn->pkt_len);
-	rn->pkt_len = sn->pkt_len;
-	rn->port    = sn->port;
-	ps_cc_barrier();
-	sn->state   = PKT_SENT_DONE;
-	rn->state   = PKT_RECV_READY;
 	src->mca_head++;
+	if ((++r) < burst) goto loop;
 	/* src->pkt_cnt--; */
 	/* fh = cos_faa(&(get_output_ring((void *)dst)->pkt_cnt), 1); */
 	/* printc("M\n"); */
@@ -77,7 +106,8 @@ mca_process(struct mca_conn *conn)
 	/* if (!fh) { */
 	/* 	eos_thd_wakeup(dst->coreid, dst->thdid); */
 	/* } */
-	return 0;
+
+	return r;
 }
 
 static inline void
@@ -90,7 +120,7 @@ mca_scan(struct mca_conn **list)
 	while (c) {
 		if (likely(c->used)) {
 			p = &(c->next);
-			mca_process(c);
+			mca_process(c,  MCA_BURST_CNT);
 		} else {
 			*p = c->next;
 			mca_conn_collect(c);

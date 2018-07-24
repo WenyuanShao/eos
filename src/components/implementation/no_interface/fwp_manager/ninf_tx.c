@@ -16,7 +16,8 @@ struct tx_ring {
 
 struct tx_pkt_batch {
 	struct eos_ring_node *rn;
-	void *phy_addr; 	/* physical address of pkt in this ring node */
+	struct pkt_meta *meta;
+	void *phy_addr; 	/* physical address of pkt in this meta */
 };
 
 static struct tx_ring *tx, *tx_fl;
@@ -93,14 +94,16 @@ ninf_tx_nf_send_burst(struct tx_pkt_batch *batch, int port)
 
 	cnt = burst_cnt[port];
 	if (!cnt) return ;
+
 	if (rte_pktmbuf_alloc_bulk(tx_mbuf_pool, tx_batch_mbufs, cnt)) {
 		assert(0);
 	}
 	for(i=0; i<cnt; i++) {
-		tx_batch_mbufs[i]->buf_addr     = batch[i].rn->pkt;
+		tx_batch_mbufs[i]->buf_addr     = batch[i].meta->pkt;
 		tx_batch_mbufs[i]->buf_physaddr = (uint64_t)batch[i].phy_addr;
 		tx_batch_mbufs[i]->userdata     = batch[i].rn;
-		tx_batch_mbufs[i]->data_len     = (uint16_t)batch[i].rn->pkt_len;
+		tx_batch_mbufs[i]->data_len     = (uint16_t)batch[i].meta->pkt_len;
+		tx_batch_mbufs[i]->pkt_len      = (uint16_t)batch[i].meta->pkt_len;
 		tx_batch_mbufs[i]->data_off     = 0;
 	}
 
@@ -117,24 +120,25 @@ ninf_tx_nf_send_burst(struct tx_pkt_batch *batch, int port)
 }
 
 static inline void *
-get_phy_addr_ring_node(struct eos_ring *nf_ring, struct eos_ring_node *node)
+get_phy_addr_ring_node(struct eos_ring *nf_ring, struct pkt_meta *node)
 {
 	return nf_ring->ring_phy_addr + (node->pkt - (void *)nf_ring);
 }
 
 static inline void
-ninf_tx_add_pkt(struct eos_ring *nf_ring, struct eos_ring_node *node)
+ninf_tx_add_pkt(struct eos_ring *nf_ring, struct eos_ring_node *node, struct pkt_meta *meta)
 {
 	int port, cnt;
 
-	port = node->port;
+	port = meta->port;
 	cnt  = burst_cnt[port];
 	if (cnt == BURST_SIZE) {
 		ninf_tx_nf_send_burst(send_batch[port], port);
 		cnt = 0;
 	}
 	send_batch[port][cnt].rn       = node;
-	send_batch[port][cnt].phy_addr = get_phy_addr_ring_node(nf_ring, node);
+	send_batch[port][cnt].meta     = meta;
+	send_batch[port][cnt].phy_addr = get_phy_addr_ring_node(nf_ring, meta);
 	burst_cnt[port] = cnt + 1;
 }
 
@@ -151,22 +155,21 @@ ninf_tx_flush()
 static inline int
 ninf_tx_process(struct eos_ring *nf_ring)
 {
-	int ret = 0, r;
+	int ret = 0, r, i;
 	volatile struct eos_ring_node *sent;
+	struct eos_ring_node scache;
 	
 	while (1) {
 		sent = GET_RING_NODE(nf_ring, nf_ring->mca_head & EOS_RING_MASK);
 		if (unlikely(sent->state != PKT_SENT_READY)) break ;
-		if (sent->state == PKT_TXING) {
-			ninf_tx_out_batch();
-			/* r = ninf_tx_clean(); */
-			/* printc("dbg tx overflow tx \n"); */
+		
+		scache = *sent;
+		assert(scache.cnt);
+		for(i=0; i<scache.cnt; i++) {
+			ninf_tx_add_pkt(nf_ring, (struct eos_ring_node *)sent, &(scache.pkts[i]));
 		}
-		assert(sent->pkt);
-		assert(sent->pkt_len);
 		/* printc("T\n"); */
 		sent->state = PKT_TXING;
-		ninf_tx_add_pkt(nf_ring, sent);
 		nf_ring->mca_head++;
 		ret++;
 	}

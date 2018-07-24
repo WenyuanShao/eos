@@ -6,8 +6,10 @@
 #include <cos_types.h>
 
 #define EOS_PKT_MAX_SZ 1600 /*the same as Click*/
-#define EOS_RING_SIZE 512
+#define EOS_RING_SIZE 256
+#define EOS_PKT_PER_ENTRY 8
 #define EOS_RING_MASK (EOS_RING_SIZE - 1)
+#define RING_NODE_PAD_SZ (2*CACHE_LINE - 3*sizeof(int) - EOS_PKT_PER_ENTRY*sizeof(struct pkt_meta))
 #define GET_RING_NODE(r, h) ((volatile struct eos_ring_node *)(&((r)->ring[(h)])))
 
 typedef enum {
@@ -20,11 +22,20 @@ typedef enum {
 	PKT_TXING,
 } pkt_states_t;
 
-struct eos_ring_node {
-	pkt_states_t state;
+struct pkt_meta {
 	void *pkt;
 	int pkt_len, port;
-};
+}__attribute__((packed));
+
+struct eos_ring;
+
+struct eos_ring_node {
+	int cnt, idx;
+	struct pkt_meta pkts[EOS_PKT_PER_ENTRY];
+	pkt_states_t state;
+	char pad[RING_NODE_PAD_SZ];
+	/* struct eos_ring *_in, *_out; */
+} __attribute__((packed));
 
 struct eos_ring {
 	struct eos_ring_node *ring;  /* read only */
@@ -36,7 +47,9 @@ struct eos_ring {
 	int mca_head;        /* mca access only */
 	char pad3[2 * CACHE_LINE - sizeof(int)];
 	int head, tail;    /* nf access only */
-};
+	char pad4[2 * CACHE_LINE - 2*sizeof(int)];
+	struct eos_ring_node cached;
+} __attribute__((packed));
 
 extern void *cos_map_virt_to_phys(void *addr);
 
@@ -66,7 +79,7 @@ eos_rings_init(void *rh)
 {
 	struct eos_ring *input_ring, *output_ring;
 	char *pkts, *end_of_rings;
-	int i;
+	int i, j;
 
 	assert(((unsigned long)rh & (~PAGE_MASK)) == 0);
 
@@ -79,19 +92,21 @@ eos_rings_init(void *rh)
 	memset(output_ring, 0, sizeof(struct eos_ring));
 	output_ring->ring = (struct eos_ring_node *)((char *)output_ring + sizeof(struct eos_ring));
 	output_ring->ring_phy_addr = input_ring->ring_phy_addr + ((char *)output_ring - (char *)rh);
+	output_ring->cached.state = PKT_SENT_READY;
 
 	end_of_rings = (char *)output_ring->ring + EOS_RING_SIZE * sizeof(struct eos_ring_node);
 	pkts = (char *)round_up_to_page(end_of_rings);
 
 	for(i=0; i<EOS_RING_SIZE; i++) {
-		output_ring->ring[i].state  = PKT_EMPTY;
-		output_ring->ring[i].port   = -1;
+		memset(output_ring->ring + i, 0, sizeof(struct eos_ring_node));
 
-		input_ring->ring[i].pkt_len = EOS_PKT_MAX_SZ;
-		input_ring->ring[i].state   = PKT_FREE;
-		input_ring->ring[i].port    = -1;
-		input_ring->ring[i].pkt     = pkts;
-		pkts                       += EOS_PKT_MAX_SZ;
+		memset(input_ring->ring + i, 0, sizeof(struct eos_ring_node));
+		input_ring->ring[i].state = PKT_FREE;
+		for(j=0; j<EOS_PKT_PER_ENTRY; j++) {
+			input_ring->ring[i].pkts[j].pkt_len = EOS_PKT_MAX_SZ;
+			input_ring->ring[i].pkts[j].pkt     = pkts;
+			pkts                               += EOS_PKT_MAX_SZ;
+		}
 	}
 
 	/* info: ring head sz 392 buffer sz 2048 tot ring sz 8192 pkt mem 262144 (64 page) */

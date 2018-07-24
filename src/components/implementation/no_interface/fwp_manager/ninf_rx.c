@@ -29,16 +29,24 @@ static inline int
 ninf_pkt_collect(struct eos_ring *r)
 {
 	volatile struct eos_ring_node *n;
+	struct eos_ring_node *nxt;
+	int i, ret = 0;
+
 	n = GET_RING_NODE(r, r->head & EOS_RING_MASK);
-		rte_pktmbuf_free(DPDK_PKT2MBUF(n->pkt));
-		n->state   = PKT_EMPTY;
-		ps_cc_barrier();
-		n->pkt     = NULL;
-		n->pkt_len = 0;
+	if (likely(n->state == PKT_SENT_DONE)) {
+		const int cnt = n->cnt;
+		for(i=0; i<cnt; i+=2) {
+			rte_pktmbuf_free(DPDK_PKT2MBUF(n->pkts[i].pkt));
+			rte_pktmbuf_free(DPDK_PKT2MBUF(n->pkts[i+1].pkt));
+		}
+		if (cnt & 1) rte_pktmbuf_free(DPDK_PKT2MBUF(n->pkts[cnt-1].pkt));
+
+		n->state = PKT_EMPTY;
 		r->head++;
-		return 1;
+		ret++;
 	}
-	return 0;
+
+	return ret * EOS_PKT_PER_ENTRY;
 }
 static inline int
 ninf_flow2_core(struct rte_mbuf *mbuf, struct pkt_ipv4_5tuple *key, uint32_t rss)

@@ -87,7 +87,8 @@ cos_tx_cb(void *userdata)
 
 	if (!userdata) return ; /* those are pass through pkts, ARP ... */
 	n = (volatile struct eos_ring_node *)userdata;
-	n->state = PKT_SENT_DONE;
+	n->cnt--;
+	if (!n->cnt) n->state = PKT_SENT_DONE;
 }
 
 void

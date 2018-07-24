@@ -19,68 +19,91 @@
 /* 	printc("dbg stat pkt sr %p rh %d sh %d\n", ring, ring->head & EOS_RING_MASK, sn->state); */
 /* } */
 
+/* FIXME: this does not work due to the change of eos_ring */
 static inline void *
 eos_pkt_allocate(struct eos_ring *ring, int len)
 {
-	int fh;
-	struct eos_ring_node *rn;
-	void *ret;
+	/* int fh; */
+	/* volatile struct eos_ring_node *rn; */
+	/* void *ret = NULL; */
 	(void)len;
+	(void)ring;
+	return NULL;
 
-	assert(len <= EOS_PKT_MAX_SZ);
-	fh  = cos_faa(&(ring->free_head), 1);
-	rn  = GET_RING_NODE(ring, fh & EOS_RING_MASK);
-	/* printc("dbg pkt alloc ring %p pkt %p free head %d sta %d\n", ring, rn, ring->free_head & EOS_RING_MASK, rn->state); */
-	if (rn->state != PKT_FREE) return NULL;
-	ret       = rn->pkt;
-	rn->state = PKT_EMPTY;
-	ps_cc_barrier();
-	rn->pkt   = NULL;
-	return ret;
+	/* assert(len <= EOS_PKT_MAX_SZ); */
+	/* fh  = cos_faa(&(ring->free_head), 1); */
+	/* rn  = GET_RING_NODE(ring, fh & EOS_RING_MASK); */
+	/* if (ps_load(&(rn->state)) != PKT_FREE) return NULL; */
+	/* ret       = rn->pkt; */
+	/* rn->state = PKT_EMPTY; */
+	/* ps_cc_barrier(); */
+	/* rn->pkt   = NULL; */
+	/* return ret; */
 }
 
+/* FIXME: this does not work due to the change of eos_ring */
 static inline void
 eos_pkt_free(struct eos_ring *ring, void *pkt)
 {
-	struct eos_ring_node *n;
+	/* volatile struct eos_ring_node *n; */
+	(void)pkt;
+	(void)ring;
 
-	n = GET_RING_NODE(ring, ring->head & EOS_RING_MASK);
-	/* printc("dbg pkt free ring %p pkt %p head %d stat %d\n", ring, pkt, ring->head & EOS_RING_MASK, n->state); */
-	if (n->state == PKT_EMPTY) {
-		n->pkt     = pkt;
-		n->pkt_len = EOS_PKT_MAX_SZ;
-		ps_cc_barrier();
-		n->state   = PKT_FREE;
-		ring->head++;
-	}
+	/* n = GET_RING_NODE(ring, ring->head & EOS_RING_MASK); */
+	/* if (ps_load(&(n->state)) == PKT_EMPTY) { */
+	/* 	n->pkt     = pkt; */
+	/* 	n->pkt_len = EOS_PKT_MAX_SZ; */
+	/* 	ps_cc_barrier(); */
+	/* 	n->state   = PKT_FREE; */
+	/* 	ring->head++; */
+	/* } */
+}
+
+static inline int
+eos_pkt_send_flush(struct eos_ring *ring)
+{
+	volatile struct eos_ring_node *rn;
+	pkt_states_t state;
+
+	if (ring->cached.cnt == 0) return 0;
+	rn = GET_RING_NODE(ring, ring->tail & EOS_RING_MASK);
+	assert(rn);
+	state = rn->state;
+	if (unlikely(state == PKT_SENT_DONE)) return -ECOLLET;
+	else if (unlikely(state != PKT_EMPTY)) return -EBLOCK;
+	memcpy((void *)rn, &(ring->cached), sizeof(struct eos_ring_node));
+	ring->tail++;
+	/* printc("S\n"); */
+	ring->cached.cnt = 0;
+	return 0;
 }
 
 static inline int
 eos_pkt_send(struct eos_ring *ring, void *pkt, int len, int port)
 {
-	volatile struct eos_ring_node *rn;
+	int r;
+	struct eos_ring_node *cache;
+	struct pkt_meta *meta;
 
-	rn = GET_RING_NODE(ring, ring->tail & EOS_RING_MASK);
-	assert(rn);
-	if (!rn) printc("dbg pkt sent\n");
-	rn->pkt     = pkt;
-	rn->pkt_len = len;
-	rn->port    = port;
-	ps_cc_barrier();
-	rn->state   = PKT_SENT_READY;
-	if (unlikely(state == PKT_SENT_DONE)) return -ECOLLET;
-	else if (unlikely(state != PKT_EMPTY)) return -EBLOCK;
-	ring->tail++;
-	/* printc("S\n"); */
+	cache = &(ring->cached);
+	if (cache->cnt == EOS_PKT_PER_ENTRY) {
+		r = eos_pkt_send_flush(ring);
+		if (unlikely(r)) return r;
+	}
+	meta          = &(cache->pkts[cache->cnt]);
+	meta->pkt     = pkt;
+	meta->pkt_len = len;
+	meta->port    = port;
+	cache->cnt++;
 	return 0;
 }
 
-static inline void *
-eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err)
+static inline int
+eos_pkt_recv_slow(struct eos_ring *ring)
 {
-	struct eos_ring_node *rn;
-	void *ret = NULL;
+	volatile struct eos_ring_node *rn;
 
+	assert(ring->cached.cnt == ring->cached.idx);
 	while (1) {
 		rn = GET_RING_NODE(ring, ring->tail & EOS_RING_MASK);
 		if (rn->state != PKT_EMPTY) break;
@@ -88,49 +111,76 @@ eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err)
 	}
 		/* printc("R\n"); */
 	if (likely(rn->state == PKT_RECV_READY)) {
-		assert(rn->pkt);
-		assert(rn->pkt_len);
-		ret         = rn->pkt;
-		*len        = rn->pkt_len;
-		*port       = rn->port;
-		rn->pkt     = NULL;
-		rn->pkt_len = 0;
-		ps_cc_barrier();
-		rn->state   = PKT_RECV_DONE;
+		memcpy(&(ring->cached), (void *)rn, sizeof(struct eos_ring_node));
+		assert (ring->cached.idx == 0);
+		rn->state = PKT_RECV_DONE;
 		ring->tail++;
 		/* cos_faa(&(ring->pkt_cnt), -1); */
+		return 0;
 	} else if (rn->state == PKT_RECV_DONE) {
 		/* printc("! tail %d stat %d\n", ring->tail, rn->state); */
 		/* printc("!\n"); */
-		*err = -ECOLLET;
+		return -ECOLLET;
 	} else {
 		/* printc("@\n"); */
 		/* printc("@ tail %d stat %d\n", ring->tail, rn->state); */
-		*err = -EBLOCK;
+		return -EBLOCK;
 	}
+}
+
+static inline void *
+eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err)
+{
+	int r;
+	void *ret = NULL;
+	struct eos_ring_node *cache;
+	struct pkt_meta *meta;
+
+	if (ring->cached.cnt == ring->cached.idx) {
+		r =eos_pkt_recv_slow(ring);
+		if (r) {
+			*err = r;
+			return NULL;
+		}
+	}
+	cache = &(ring->cached);
+	meta = &(cache->pkts[cache->idx]);
+	assert(meta->pkt);
+	assert(meta->pkt_len);
+	ret   = meta->pkt;
+	*len  = meta->pkt_len;
+	*port = meta->port;
+	cache->idx++;
+
 	return ret;
 }
 
-static inline void
+static inline int
 eos_pkt_collect(struct eos_ring *recv, struct eos_ring *sent)
 {
 	volatile struct eos_ring_node *rn, *sn;
+	struct eos_ring_node *nxt;
+	int r = 0;
+	struct eos_ring_node scache;
+	pkt_states_t state;
 
 collect:
 	rn = GET_RING_NODE(recv, recv->head & EOS_RING_MASK);
 	sn = GET_RING_NODE(sent, sent->head & EOS_RING_MASK);
-		rn->pkt     = sn->pkt;
-		rn->pkt_len = EOS_PKT_MAX_SZ;
-		sn->state   = PKT_EMPTY;
-		ps_cc_barrier();
-		sn->pkt     = NULL;
-		sn->pkt_len = 0;
-		rn->state   = PKT_FREE;
+	state = rn->state;
+
 	if (likely((state == PKT_EMPTY || state == PKT_RECV_DONE) && sn->state  == PKT_SENT_DONE)) {
+		memcpy(&scache, (void *)sn, sizeof(struct eos_ring_node));
+		scache.cnt   = scache.idx = 0;
+		scache.state = PKT_FREE;
+		sn->state    = PKT_EMPTY;
+		memcpy((void *)rn, &scache, sizeof(struct eos_ring_node));
 		recv->head++;
 		sent->head++;
+		r++;
 		goto collect;
 	}
+	return r;
 }
 
 #endif /* __EOS_PKT_H__ */
