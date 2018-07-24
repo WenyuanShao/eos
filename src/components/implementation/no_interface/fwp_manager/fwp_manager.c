@@ -470,8 +470,8 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 
 	/* chain = fwp_create_chain_bridge(); */
 	/* chain = fwp_create_chain_firewall(); */
-	chain = fwp_create_chain_multi_tency(1);
-	/* chain = fwp_create_chain_multi_tency_share(6); */
+	chain = fwp_create_chain_multi_tency(6);
+	/* chain = fwp_create_chain_multi_tency_share(2); */
 	fwp_allocate_chain(chain, 1, 0);
 
 	for(i=NF_MIN_CORE; i<NF_MAX_CORE; i++) {

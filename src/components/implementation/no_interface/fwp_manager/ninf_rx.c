@@ -9,6 +9,7 @@
 /* #define PER_FLOW_CHAIN */
 /* #define SINGLE_PING_CHURN_TEST */
 /* #define FIXED_NF_CHAIN */
+/* #define DBG_REMOVE_MCA */
 #define DPDK_PKT_OFF 256
 #define NF_PER_CORE_BATCH 1
 #define DPDK_PKT2MBUF(pkt) ((struct rte_mbuf *)((void *)(pkt) - DPDK_PKT_OFF))
@@ -188,7 +189,23 @@ ninf_get_nf_ring(struct rte_mbuf *mbuf)
 		assert(ninf_ring);    
         }
 	return ninf_ring;
-#endif   
+#endif
+
+#ifdef DBG_REMOVE_MCA
+	if (!global_chain) {
+		printc("dbg new flow no mca\n");
+		struct eos_ring *rx_out;
+		rx_out = cos_page_bump_allocn(CURR_CINFO(), round_up_to_page(FWP_RINGS_SIZE));
+		assert(rx_out);
+		eos_rings_init((void *)rx_out);
+		rx_out = get_output_ring((void *)rx_out);
+		ninf_tx_add_ring(rx_out);
+		global_rx_out = rx_out;
+		fix_rx_outs[chain_idx++] = rx_out;
+		global_chain = 1;
+	}
+	return global_rx_out;
+#endif
 }
 
 static inline void
@@ -238,11 +255,14 @@ ninf_rx_proc_batch(struct rte_mbuf **mbufs, int nbuf, int in_port)
 void
 ninf_rx_loop()
 {
-	int tot_rx = 0, port, i=0;
+	int port=0, i=0;
 
 	while (1) {
-		if (fix_rx_outs[i]) ninf_pkt_collect(fix_rx_outs[i]);
-		i = (i+1) % EOS_MAX_FLOW_NUM;
+		/* if (fix_rx_outs[i]) { */
+		/* 	/\* ninf_pkt_collect(fix_rx_outs[i]); *\/ */
+		/* 	eos_pkt_send_flush(fix_rx_outs[i]); */
+		/* } */
+		/* i = (i+1) % EOS_MAX_FLOW_NUM; */
 		for(port=0; port<NUM_NIC_PORTS; port++) {
 			const u16_t nb_rx = rte_eth_rx_burst(port, 0, rx_batch_mbufs, BURST_SIZE);
 
