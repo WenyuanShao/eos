@@ -152,7 +152,7 @@ static inline int
 ninf_tx_process(struct eos_ring *nf_ring)
 {
 	int ret = 0, r;
-	struct eos_ring_node *sent;
+	volatile struct eos_ring_node *sent;
 	
 	while (1) {
 		sent = GET_RING_NODE(nf_ring, nf_ring->mca_head & EOS_RING_MASK);

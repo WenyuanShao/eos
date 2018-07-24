@@ -28,7 +28,7 @@ static int tot_rx = 0;
 static inline int
 ninf_pkt_collect(struct eos_ring *r)
 {
-	struct eos_ring_node *n;
+	volatile struct eos_ring_node *n;
 	n = GET_RING_NODE(r, r->head & EOS_RING_MASK);
 	if (n->state == PKT_SENT_DONE) {
 		rte_pktmbuf_free(DPDK_PKT2MBUF(n->pkt));

@@ -48,7 +48,7 @@ static inline int
 mca_process(struct mca_conn *conn)
 {
 	struct eos_ring *src, *dst;
-	struct eos_ring_node *rn, *sn;
+	volatile struct eos_ring_node *rn, *sn;
 	int fh;
 
 	src = conn->src_ring;

@@ -8,7 +8,7 @@
 #define EOS_PKT_MAX_SZ 1600 /*the same as Click*/
 #define EOS_RING_SIZE 512
 #define EOS_RING_MASK (EOS_RING_SIZE - 1)
-#define GET_RING_NODE(r, h) (&((r)->ring[(h)]))
+#define GET_RING_NODE(r, h) ((volatile struct eos_ring_node *)(&((r)->ring[(h)])))
 
 typedef enum {
 	PKT_EMPTY = 0,

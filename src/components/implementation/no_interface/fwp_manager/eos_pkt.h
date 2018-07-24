@@ -58,7 +58,7 @@ eos_pkt_free(struct eos_ring *ring, void *pkt)
 static inline int
 eos_pkt_send(struct eos_ring *ring, void *pkt, int len, int port)
 {
-	struct eos_ring_node *rn;
+	volatile struct eos_ring_node *rn;
 
 	rn = GET_RING_NODE(ring, ring->tail & EOS_RING_MASK);
 	assert(rn);
@@ -115,7 +115,7 @@ eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err)
 static inline void
 eos_pkt_collect(struct eos_ring *recv, struct eos_ring *sent)
 {
-	struct eos_ring_node *rn, *sn;
+	volatile struct eos_ring_node *rn, *sn;
 
 collect:
 	rn = GET_RING_NODE(recv, recv->head & EOS_RING_MASK);

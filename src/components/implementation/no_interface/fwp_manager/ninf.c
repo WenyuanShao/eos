@@ -83,10 +83,10 @@ cos_dpdk_print(char *s, int len)
 void
 cos_tx_cb(void *userdata)
 {
-	struct eos_ring_node *n;
+	volatile struct eos_ring_node *n;
 
 	if (!userdata) return ; /* those are pass through pkts, ARP ... */
-	n = (struct eos_ring_node *)userdata;
+	n = (volatile struct eos_ring_node *)userdata;
 	n->state = PKT_SENT_DONE;
 }
 
