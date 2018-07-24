@@ -217,8 +217,19 @@ static inline void
 ninf_rx_proc_batch(struct rte_mbuf **mbufs, int nbuf, int in_port)
 {
 	int i;
-	for(i=0; i<nbuf; i++) {
+	for(i=0; i< (nbuf & (~(unsigned)0x3)); i+=4) {
 		ninf_rx_proc_mbuf(mbufs[i], in_port);
+		ninf_rx_proc_mbuf(mbufs[i+1], in_port);
+		ninf_rx_proc_mbuf(mbufs[i+2], in_port);
+		ninf_rx_proc_mbuf(mbufs[i+3], in_port);
+	}
+	switch (nbuf & 0x3) {
+	case 3:
+		ninf_rx_proc_mbuf(mbufs[i++], in_port); /* fallthrough */
+	case 2:
+		ninf_rx_proc_mbuf(mbufs[i++], in_port); /* fallthrough */
+	case 1:
+		ninf_rx_proc_mbuf(mbufs[i++], in_port);
 	}
 }
 
