@@ -96,7 +96,7 @@ RouterThread::RouterThread(Master *master, int id)
     // Must be set low for Luigi's feedback scheduler to work properly
     _tasks_per_iter = 8;
 #else
-    _tasks_per_iter = 128;
+    _tasks_per_iter = 1;
 #endif
 #endif
 
