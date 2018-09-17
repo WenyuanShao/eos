@@ -480,7 +480,7 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 			fwp_allocate_chain(chain, 0, i);
 		}
 	}
-	printc("dbg %d chains alloca done\n", (NF_MAX_CORE - NF_MIN_CORE) * EOS_MAX_CHAIN_NUM_PER_CORE);
+	printc("dbg %d chains alloca done node sz %d\n", (NF_MAX_CORE - NF_MIN_CORE) * EOS_MAX_CHAIN_NUM_PER_CORE, sizeof(struct eos_ring_node));
 
 	/* for(i=0; i<3; i++) { */
 	/* 	printc("dbg spin %d\n", i); */
@@ -690,11 +690,9 @@ fwp_create_chain_multi_tency_share(int len)
 	nf1->nd_sinv = 1;
 	nf1->data_seg = &templates[next_template_id++];
 	ret_chain->first_nf = nf1;
-	printc("dbg 1\n");
 
 	for(i=1; i<len-1; i++) {
 		nf2 = __share_nf(1);
-	printc("dbg 2\n");
 		nf1->next = nf2;
 		nf1 = nf2;
 	}
@@ -710,7 +708,6 @@ fwp_create_chain_multi_tency_share(int len)
 	nf1->next = nf2;
 	nf2->next = NULL;
 	ret_chain->last_nf = nf2;
-	printc("dbg 3\n");
 
 	return ret_chain;
 }

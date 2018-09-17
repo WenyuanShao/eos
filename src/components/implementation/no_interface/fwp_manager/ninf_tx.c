@@ -114,8 +114,6 @@ ninf_tx_nf_send_burst(struct tx_pkt_batch *batch, int port)
 		left -= nb_tx;
 		mbatch += nb_tx;
 	}
-	/* printc("#\n"); */
-	/* assert(nb_tx == cnt); */
 	burst_cnt[port] = 0;
 }
 
@@ -168,7 +166,6 @@ ninf_tx_process(struct eos_ring *nf_ring)
 		for(i=0; i<scache.cnt; i++) {
 			ninf_tx_add_pkt(nf_ring, (struct eos_ring_node *)sent, &(scache.pkts[i]));
 		}
-		/* printc("T\n"); */
 		sent->state = PKT_TXING;
 		nf_ring->mca_head++;
 		ret++;

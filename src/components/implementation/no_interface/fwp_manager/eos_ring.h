@@ -108,9 +108,6 @@ eos_rings_init(void *rh)
 			pkts                               += EOS_PKT_MAX_SZ;
 		}
 	}
-
-	/* info: ring head sz 392 buffer sz 2048 tot ring sz 8192 pkt mem 262144 (64 page) */
-	/* printc("info: ring head sz %d buffer sz %d tot ring sz %d pkt mem %d\n", sizeof(struct eos_ring), (void *)output_ring - (void *)input_ring->ring, (void *)round_up_to_page(end_of_rings) - rh, EOS_PKT_MAX_SZ * EOS_RING_SIZE); */
 }
 
 #endif /* __ESO_RING_H__ */

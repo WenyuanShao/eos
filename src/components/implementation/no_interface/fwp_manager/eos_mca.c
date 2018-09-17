@@ -103,7 +103,6 @@ loop:
 	if ((++r) < burst) goto loop;
 	/* src->pkt_cnt--; */
 	/* fh = cos_faa(&(get_output_ring((void *)dst)->pkt_cnt), 1); */
-	/* printc("M\n"); */
 	/* fh = cos_faa(&(dst->pkt_cnt), 1); */
 	/* if (!fh) { */
 	/* 	eos_thd_wakeup(dst->coreid, dst->thdid); */

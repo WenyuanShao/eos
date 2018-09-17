@@ -7,18 +7,6 @@
 #define EBLOCK  1
 #define ECOLLET 2
 
-#ifndef ps_cc_barrier
-#define ps_cc_barrier() __asm__ __volatile__ ("" : : : "memory")
-#endif
-/* static inline void */
-/* dbg_state(struct eos_ring *ring) */
-/* { */
-/* 	struct eos_ring_node *sn; */
-
-/* 	sn = GET_RING_NODE(ring, ring->head & EOS_RING_MASK); */
-/* 	printc("dbg stat pkt sr %p rh %d sh %d\n", ring, ring->head & EOS_RING_MASK, sn->state); */
-/* } */
-
 /* FIXME: this does not work due to the change of eos_ring */
 static inline void *
 eos_pkt_allocate(struct eos_ring *ring, int len)
@@ -73,7 +61,6 @@ eos_pkt_send_flush(struct eos_ring *ring)
 	else if (unlikely(state != PKT_EMPTY)) return -EBLOCK;
 	memcpy((void *)rn, &(ring->cached), sizeof(struct eos_ring_node));
 	ring->tail++;
-	/* printc("S\n"); */
 	ring->cached.cnt = 0;
 	return 0;
 }
@@ -109,7 +96,6 @@ eos_pkt_recv_slow(struct eos_ring *ring)
 		if (rn->state != PKT_EMPTY) break;
 		ring->tail++;
 	}
-		/* printc("R\n"); */
 	if (likely(rn->state == PKT_RECV_READY)) {
 		memcpy(&(ring->cached), (void *)rn, sizeof(struct eos_ring_node));
 		assert (ring->cached.idx == 0);
@@ -118,12 +104,8 @@ eos_pkt_recv_slow(struct eos_ring *ring)
 		/* cos_faa(&(ring->pkt_cnt), -1); */
 		return 0;
 	} else if (rn->state == PKT_RECV_DONE) {
-		/* printc("! tail %d stat %d\n", ring->tail, rn->state); */
-		/* printc("!\n"); */
 		return -ECOLLET;
 	} else {
-		/* printc("@\n"); */
-		/* printc("@ tail %d stat %d\n", ring->tail, rn->state); */
 		return -EBLOCK;
 	}
 }
@@ -151,6 +133,9 @@ eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err)
 	*len  = meta->pkt_len;
 	*port = meta->port;
 	cache->idx++;
+	/* if (ring->cached.idx < ring->cached.cnt) { */
+	__builtin_prefetch(cache->pkts[cache->idx].pkt, 1);
+	/* } */
 
 	return ret;
 }
