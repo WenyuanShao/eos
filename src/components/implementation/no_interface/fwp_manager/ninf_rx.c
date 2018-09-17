@@ -258,11 +258,11 @@ ninf_rx_loop()
 	int port=0, i=0;
 
 	while (1) {
-		/* if (fix_rx_outs[i]) { */
-		/* 	/\* ninf_pkt_collect(fix_rx_outs[i]); *\/ */
-		/* 	eos_pkt_send_flush(fix_rx_outs[i]); */
-		/* } */
-		/* i = (i+1) % EOS_MAX_FLOW_NUM; */
+		if (fix_rx_outs[i]) {
+			/* ninf_pkt_collect(fix_rx_outs[i]); */
+			eos_pkt_send_flush(fix_rx_outs[i]);
+		}
+		i = (i+1) % EOS_MAX_FLOW_NUM;
 		for(port=0; port<NUM_NIC_PORTS; port++) {
 			const u16_t nb_rx = rte_eth_rx_burst(port, 0, rx_batch_mbufs, BURST_SIZE);
 

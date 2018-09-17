@@ -6,10 +6,10 @@
 
 /* Assume 16 cores in total, and 4 of them reserved for system  */
 #define EOS_MAX_NF_CHAIN_TYPE_NUM  10 /* number of nf chain templates */
-#define EOS_MAX_CHAIN_NUM_PER_CORE 11 /* 188 */
+#define EOS_MAX_CHAIN_NUM_PER_CORE 100 /* 188 */
 #define EOS_MAX_CHAIN_NUM          ((EOS_MAX_CHAIN_NUM_PER_CORE * (NUM_CPU - 4)) + EOS_MAX_NF_CHAIN_TYPE_NUM)
 #define EOS_MAX_NF_TYPE_NUM        10 /* number of nf type, need such number of templates */
-#define EOS_MAX_CHAIN_LEN          6
+#define EOS_MAX_CHAIN_LEN          1
 #define EOS_MAX_NF_NUM_PER_CORE    (EOS_MAX_CHAIN_LEN * EOS_MAX_CHAIN_NUM_PER_CORE) /* chain length * #chains */
 #define EOS_MAX_NF_NUM             (2 + EOS_MAX_NF_TYPE_NUM + EOS_MAX_NF_NUM_PER_CORE * (NUM_CPU - 4))  /* This also includes templates, the booter and the initial component*/
 #define EOS_MAX_FLOW_NUM           100 	/* number of client flow, should equal to number of chain if we have a chain per flow */
