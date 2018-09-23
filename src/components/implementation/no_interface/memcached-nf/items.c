@@ -2,9 +2,13 @@
 #include <nf_hypercall.h>
 #include "memcached.h"
 
-#define MC_ITEM_ALLOC_SZ 1024
-#define MC_ITEM_MAX_NUM 100
-static char item_mem[MC_ITEM_MAX_NUM+1][MC_ITEM_ALLOC_SZ];
+#define MC_ITEM_ALLOC_SZ 200
+#define MC_ITEM_ALLOC_NUM (MC_ITEM_MAX_NUM+5)
+struct mc_item_mem {
+    char mem[MC_ITEM_ALLOC_SZ];
+}__attribute__((packed));
+
+static struct mc_item_mem item_mem[MC_ITEM_ALLOC_NUM];
 static void *item_free_list;
 static int item_free_idx;
 
@@ -12,7 +16,7 @@ void
 item_init()
 {
     item_free_idx = 0;
-    memset(item_mem, 0, MC_ITEM_ALLOC_SZ);
+    memset(item_mem, 0, MC_ITEM_ALLOC_NUM * sizeof(struct mc_item_mem));
     item_free_list = NULL;
 }
 
@@ -23,8 +27,8 @@ __item_alloc(int sz)
 
     assert(sz <= MC_ITEM_ALLOC_SZ);
     if (!item_free_list) {
-        assert(item_free_idx <= MC_ITEM_MAX_NUM);
-        return (void *)item_mem[item_free_idx++];
+        assert(item_free_idx <= MC_ITEM_ALLOC_NUM);
+        return (void *)(&item_mem[item_free_idx++]);
     } else {
         assert(item_free_list);
         ret = item_free_list;
@@ -105,7 +109,6 @@ void
 item_free(item *it)
 {
     __item_free((void *)it);
-    return 0;
 }
 
 /* this ignores the refcnt. */

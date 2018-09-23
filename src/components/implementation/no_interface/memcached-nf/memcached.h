@@ -18,6 +18,7 @@
 #define KEY_LENGTH            16
 #define KEY_PREFIX_LENGTH     (KEY_LENGTH - 5)
 #define V_LENGTH              (100)
+#define MC_ITEM_MAX_NUM       100
 #define MC_MEM_EVICT_MAX      1
 #define MC_MEM_EVICT_THOLD    99
 #define MC_MEM_BALANCE_MAX    512
