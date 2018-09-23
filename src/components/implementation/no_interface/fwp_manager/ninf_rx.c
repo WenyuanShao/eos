@@ -23,7 +23,7 @@ static int major_core_id, minor_core_id;
 static struct nf_chain *global_chain = NULL;
 static struct eos_ring *global_rx_out;
 static struct eos_ring *fix_rx_outs[EOS_MAX_FLOW_NUM] = {NULL};
-static int chain_idx = 0, prev_collect = 32*EOS_PKT_PER_ENTRY;
+static int chain_idx = 0, prev_collect = 32*EOS_PKT_COLLECT_MULTIP;
 static int tot_rx = 0;
 
 static inline int
@@ -49,7 +49,8 @@ ninf_pkt_collect(struct eos_ring *r)
 		__builtin_prefetch(nxt, 1);
 	}
 
-	return ret * EOS_PKT_PER_ENTRY;
+	return ret * EOS_PKT_COLLECT_MULTIP;
+	/* return 0; */
 }
 static inline int
 ninf_flow2_core(struct rte_mbuf *mbuf, struct pkt_ipv4_5tuple *key, uint32_t rss)
