@@ -50,8 +50,10 @@ mc_server_run()
        while (1) {
 	       pkt = eos_get_packet(&len, &port);
 	       assert(pkt);
+	       assert(len <= EOS_PKT_MAX_SZ);
 	       /* printc("dbg l %d \n", len); */
 	       mc_process(pkt, len, &len);
+	       assert(len < EOS_PKT_MAX_SZ);
 	       /* printc("dbg n %d\n", len); */
 	       r = eos_pkt_send(ouput_ring, pkt, len, port);
 	       assert(!r);

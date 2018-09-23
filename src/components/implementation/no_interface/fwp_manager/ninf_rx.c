@@ -226,6 +226,7 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 	do {
 		if (prev_collect <= 0) prev_collect = ninf_pkt_collect(ninf_ring);
 		ninf_ring->cached.cnt = EOS_PKT_PER_ENTRY;
+		assert(rte_pktmbuf_data_len(mbuf) <= EOS_PKT_MAX_SZ);
 		r = eos_pkt_send(ninf_ring, rte_pktmbuf_mtod(mbuf, void *), rte_pktmbuf_data_len(mbuf), IN2OUT_PORT(in_port));
 	} while (unlikely(r == -ECOLLET));
 	/* drop pkts */

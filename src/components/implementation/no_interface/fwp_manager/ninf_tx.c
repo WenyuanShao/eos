@@ -104,6 +104,7 @@ ninf_tx_nf_send_burst(struct tx_pkt_batch *batch, int port)
 		tx_batch_mbufs[i]->userdata     = batch[i].rn;
 		tx_batch_mbufs[i]->data_len     = (uint16_t)batch[i].meta->pkt_len;
 		tx_batch_mbufs[i]->pkt_len      = (uint16_t)batch[i].meta->pkt_len;
+		assert(batch[i].meta->pkt_len <= EOS_PKT_MAX_SZ);
 		tx_batch_mbufs[i]->data_off     = 0;
 	}
 

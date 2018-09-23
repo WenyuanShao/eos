@@ -57,6 +57,7 @@ mca_transfer(struct eos_ring_node *sn, struct eos_ring_node *rn)
 		__builtin_prefetch(rn->pkts[i+1].pkt, 1);
 		smeta          = &(sn->pkts[i]);
 		rmeta          = &(rn->pkts[i]);
+		assert(smeta->pkt_len <= EOS_PKT_MAX_SZ);
 		rmeta->pkt_len = smeta->pkt_len;
 		rmeta->port    = smeta->port;
 		mca_copy(rmeta->pkt, smeta->pkt, smeta->pkt_len);
