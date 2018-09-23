@@ -4,7 +4,7 @@
 #include "eos_mca.h"
 #include "eos_pkt.h"
 
-#define MCA_CONN_MAX_NUM 1024
+#define MCA_CONN_MAX_NUM 2048
 #define MCA_BURST_CNT (32/EOS_PKT_PER_ENTRY)
 
 static struct mca_conn *fl, *lh;
