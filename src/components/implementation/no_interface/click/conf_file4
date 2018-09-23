@@ -13,5 +13,4 @@
 
 //	-> EtherMirror()
 FromRing
-	-> EtherMirror()
 	-> ToRing;
