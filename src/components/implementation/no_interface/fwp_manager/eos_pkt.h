@@ -6,6 +6,7 @@
 
 #define EBLOCK  1
 #define ECOLLET 2
+#define ESENT   3
 
 /* FIXME: this does not work due to the change of eos_ring */
 static inline void *
@@ -53,12 +54,15 @@ eos_pkt_send_flush(struct eos_ring *ring)
 	volatile struct eos_ring_node *rn;
 	pkt_states_t state;
 
+	assert(ring->cached.cnt <= EOS_PKT_PER_ENTRY);
 	if (ring->cached.cnt == 0) return 0;
+	if (ring->cached.idx < ring->cached.cnt) return -ESENT;
 	rn = GET_RING_NODE(ring, ring->tail & EOS_RING_MASK);
 	assert(rn);
 	state = rn->state;
 	if (unlikely(state == PKT_SENT_DONE)) return -ECOLLET;
 	else if (unlikely(state != PKT_EMPTY)) return -EBLOCK;
+	ring->cached.idx = 0;
 	memcpy((void *)rn, &(ring->cached), sizeof(struct eos_ring_node));
 	ring->tail++;
 	ring->cached.cnt = 0;
@@ -73,20 +77,23 @@ eos_pkt_send(struct eos_ring *ring, void *pkt, int len, int port)
 	struct pkt_meta *meta;
 
 	cache = &(ring->cached);
-	if (cache->cnt == EOS_PKT_PER_ENTRY) {
+	if (cache->cnt == cache->idx) {
 		r = eos_pkt_send_flush(ring);
 		if (unlikely(r)) return r;
 	}
-	meta          = &(cache->pkts[cache->cnt]);
+
+	meta          = &(cache->pkts[cache->idx++]);
 	meta->pkt     = pkt;
 	meta->pkt_len = len;
 	meta->port    = port;
-	cache->cnt++;
+	if (cache->cnt == cache->idx) {
+		r = eos_pkt_send_flush(ring);
+	}
 	return 0;
 }
 
 static inline int
-eos_pkt_recv_slow(struct eos_ring *ring)
+eos_pkt_recv_slow(struct eos_ring *ring, struct eos_ring *sent)
 {
 	volatile struct eos_ring_node *rn;
 
@@ -98,7 +105,12 @@ eos_pkt_recv_slow(struct eos_ring *ring)
 	}
 	if (likely(rn->state == PKT_RECV_READY)) {
 		memcpy(&(ring->cached), (void *)rn, sizeof(struct eos_ring_node));
-		assert (ring->cached.idx == 0);
+		assert(ring->cached.cnt);
+		assert(ring->cached.idx == 0);
+		assert(sent->cached.cnt == 0);
+		assert(sent->cached.idx == 0);
+		memcpy(sent->cached.pkts, ring->cached.pkts, sizeof(ring->cached.pkts));
+		sent->cached.cnt = ring->cached.cnt;
 		rn->state = PKT_RECV_DONE;
 		ring->tail++;
 		/* cos_faa(&(ring->pkt_cnt), -1); */
@@ -111,7 +123,7 @@ eos_pkt_recv_slow(struct eos_ring *ring)
 }
 
 static inline void *
-eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err)
+eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err, struct eos_ring *sent)
 {
 	int r;
 	void *ret = NULL;
@@ -119,7 +131,7 @@ eos_pkt_recv(struct eos_ring *ring, int *len, int *port, int *err)
 	struct pkt_meta *meta;
 
 	if (ring->cached.cnt == ring->cached.idx) {
-		r =eos_pkt_recv_slow(ring);
+		r =eos_pkt_recv_slow(ring, sent);
 		if (r) {
 			*err = r;
 			return NULL;
@@ -156,6 +168,15 @@ collect:
 
 	if (likely((state == PKT_EMPTY || state == PKT_RECV_DONE) && sn->state  == PKT_SENT_DONE)) {
 		memcpy(&scache, (void *)sn, sizeof(struct eos_ring_node));
+
+		/* debug */
+		struct eos_ring_node rcache;
+		int i;
+		memcpy(&rcache, (void *)rn, sizeof(struct eos_ring_node));
+		assert(recv->head == sent->head);
+		for(i=0; i<EOS_PKT_PER_ENTRY; i++) {
+			assert(rcache.pkts[i].pkt == scache.pkts[i].pkt);
+		}
 		scache.cnt   = scache.idx = 0;
 		scache.state = PKT_FREE;
 		sn->state    = PKT_EMPTY;

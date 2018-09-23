@@ -225,6 +225,7 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 	
 	do {
 		if (prev_collect <= 0) prev_collect = ninf_pkt_collect(ninf_ring);
+		ninf_ring->cached.cnt = EOS_PKT_PER_ENTRY;
 		r = eos_pkt_send(ninf_ring, rte_pktmbuf_mtod(mbuf, void *), rte_pktmbuf_data_len(mbuf), IN2OUT_PORT(in_port));
 	} while (unlikely(r == -ECOLLET));
 	/* drop pkts */
@@ -260,7 +261,9 @@ ninf_rx_loop()
 	while (1) {
 		if (fix_rx_outs[i]) {
 			/* ninf_pkt_collect(fix_rx_outs[i]); */
+			fix_rx_outs[i]->cached.cnt = fix_rx_outs[i]->cached.idx;
 			eos_pkt_send_flush(fix_rx_outs[i]);
+			fix_rx_outs[i]->cached.cnt = EOS_PKT_PER_ENTRY;;
 		}
 		i = (i+1) % EOS_MAX_FLOW_NUM;
 		for(port=0; port<NUM_NIC_PORTS; port++) {
