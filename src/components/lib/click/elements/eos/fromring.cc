@@ -113,13 +113,11 @@ FromRing::run_task(Task *)
        struct eos_ring *ouput_ring = get_output_ring((void *)shmem_addr);
 
        dbg_click_pkt_collect(input_ring, ouput_ring);
-       pkt = eos_pkt_recv(input_ring, &len, &port, &err);
+       pkt = eos_pkt_recv(input_ring, &len, &port, &err, ouput_ring);
        while (unlikely(!pkt)) {
-	       if (err == -EBLOCK) {
-		       // eos_pkt_send_flush(ouput_ring);
-		       click_block();
-	       } else if (err == -ECOLLET) dbg_click_pkt_collect(input_ring, ouput_ring);
-	       pkt = eos_pkt_recv(input_ring, &len, &port, &err);
+	       if (err == -EBLOCK) click_block();
+	       else if (err == -ECOLLET) dbg_click_pkt_collect(input_ring, ouput_ring);
+	       pkt = eos_pkt_recv(input_ring, &len, &port, &err, ouput_ring);
        }
        p = Packet::make((unsigned char*) pkt, len, NULL, NULL, port);
        output(0).push(p);
