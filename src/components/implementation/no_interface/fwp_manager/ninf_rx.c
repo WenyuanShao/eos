@@ -36,7 +36,7 @@ ninf_pkt_collect(struct eos_ring *r)
 	n = GET_RING_NODE(r, r->head & EOS_RING_MASK);
 	if (likely(n->state == PKT_SENT_DONE)) {
 		const int cnt = n->cnt;
-		for(i=0; i<cnt; i+=2) {
+		for(i=0; i+1<cnt; i+=2) {
 			rte_pktmbuf_free(DPDK_PKT2MBUF(n->pkts[i].pkt));
 			rte_pktmbuf_free(DPDK_PKT2MBUF(n->pkts[i+1].pkt));
 		}
