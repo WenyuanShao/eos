@@ -126,7 +126,7 @@ ninf_get_nf_ring(struct rte_mbuf *mbuf)
 {
 #ifdef NO_FLOW_ISOLATION
 	if (unlikely(!global_chain)) {
-		printc("dbg new flow\n");
+		/* printc("dbg new flow\n"); */
 		global_chain = fwp_chain_get(FWP_CHAIN_CLEANED, NF_MIN_CORE);
 		assert(global_chain);
 		global_rx_out = ninf_setup_new_chain(global_chain);

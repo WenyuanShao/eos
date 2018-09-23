@@ -4,7 +4,7 @@
 #include "ninf.h"
 #include "ninf_util.h"
 
-#define TX_NUM_MBUFS 1024
+#define TX_NUM_MBUFS 8192/* 1024 */
 #define TX_MBUF_DATA_SIZE 0
 #define TX_MBUF_SIZE (TX_MBUF_DATA_SIZE + RTE_PKTMBUF_HEADROOM + sizeof(struct rte_mbuf))
 

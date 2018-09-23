@@ -2,7 +2,8 @@
 #include <nf_hypercall.h>
 #include "memcached.h"
 
-#define MC_COLLECT_THRESH (32*EOS_PKT_PER_ENTRY)
+#define MC_COLLECT_MULTIP (EOS_PKT_COLLECT_MULTIP)
+#define MC_COLLECT_THRESH (32*MC_COLLECT_MULTIP)
 
 extern int mc_process(void *pkt, int pkt_len, int *ret_len);
 extern int mc_populate(int num_key);
@@ -14,8 +15,8 @@ static int
 mc_pkt_collect(struct eos_ring *recv, struct eos_ring *sent)
 {
 	if (!(prev_collect--)) {
-		prev_collect = eos_pkt_collect(recv, sent)*EOS_PKT_PER_ENTRY;
-		if (!prev_collect) nf_hyp_block();
+		prev_collect = eos_pkt_collect(recv, sent)*MC_COLLECT_MULTIP;
+		if (!prev_collect) /* nf_hyp_block() */;
 		else prev_collect--;
 	}
 	return prev_collect;
@@ -28,15 +29,12 @@ eos_get_packet(int *len, int *port)
        void *pkt;
 
        mc_pkt_collect(input_ring, ouput_ring);
-       pkt = eos_pkt_recv(input_ring, len, port, &err);
+       pkt = eos_pkt_recv(input_ring, len, port, &err, ouput_ring);
        while (unlikely(!pkt)) {
-	       if (err == -EBLOCK) {
-		       eos_pkt_send_flush(ouput_ring);
-		       nf_hyp_block();
-	       } else if (err == -ECOLLET) mc_pkt_collect(input_ring, ouput_ring);
-	       pkt = eos_pkt_recv(input_ring, len, port, &err);
+	       if (err == -EBLOCK) /* nf_hyp_block() */;
+	       else if (err == -ECOLLET) mc_pkt_collect(input_ring, ouput_ring);
+	       pkt = eos_pkt_recv(input_ring, len, port, &err, ouput_ring);
        }
-
       
        return pkt;
 }
@@ -51,10 +49,8 @@ mc_server_run()
 	       pkt = eos_get_packet(&len, &port);
 	       assert(pkt);
 	       assert(len <= EOS_PKT_MAX_SZ);
-	       /* printc("dbg l %d \n", len); */
 	       mc_process(pkt, len, &len);
 	       assert(len < EOS_PKT_MAX_SZ);
-	       /* printc("dbg n %d\n", len); */
 	       r = eos_pkt_send(ouput_ring, pkt, len, port);
 	       assert(!r);
        }
@@ -65,7 +61,7 @@ cos_init(void *args)
 {
        nf_hyp_confidx_get(&conf_file_idx);
        nf_hyp_get_shmem_addr(&shmem_addr); 
-       printc ("dbg shmem %p conf %d\n", shmem_addr, conf_file_idx);
+       /* printc ("dbg shmem %p conf %d\n", shmem_addr, conf_file_idx); */
        input_ring = get_input_ring((void *)shmem_addr);
        ouput_ring = get_output_ring((void *)shmem_addr);
 
@@ -76,7 +72,8 @@ cos_init(void *args)
 	       assoc_init(0);
 	       item_init();
 	       /* printc("dbg mc 2\n"); */
-	       mc_populate(10);
+	       mc_populate(MC_ITEM_MAX_NUM);
+	       printc("mc server pre populate done\n");
 	       nf_hyp_checkpoint(cos_spd_id());
 	       mc_server_run();
        }

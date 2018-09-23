@@ -36,12 +36,9 @@ assoc_init(const int hashtable_init)
 {
     int size = hashsize(HASHPOWER_DEFAULT) * sizeof(struct list_head);
     size = round_up_to_page(size);
-    printc("dbg mc ass 0\n");
     nf_hyp_malloc(size, &primary_hashtable);
     assert(primary_hashtable);
-    printc("dbg mc ass 2 %p\n", primary_hashtable);
     memset(primary_hashtable, 0, size);
-    printc("dbg mc ass 3\n");
     return ;
 }
 

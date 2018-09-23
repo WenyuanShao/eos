@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <memcached.h>
+#include <eos_pkt.h>
 
 typedef unsigned short u16;
 typedef unsigned long u32;
@@ -102,8 +103,8 @@ mc_set_key(char *key, int nkey, char *data, int nbytes)
 	it->hv = hv;
 
 	old_it = do_item_get(key, nkey, hv);
-	assert(old_it == NULL);
-	do_item_link(it, hv);
+	if (!old_it) do_item_link(it, hv);
+	else do_item_replace(old_it, it, hv);
 	return 0;
 }
 
@@ -178,7 +179,6 @@ reform_set_response(char *pkt_data, char *key, int key_len)
         udp_len += inc;
 }
 
-
 static int
 parse_mc_pkt(void *pkt, char** pkt_data_p, char *ret_key, int *keylen_p)
 {
@@ -186,13 +186,12 @@ parse_mc_pkt(void *pkt, char** pkt_data_p, char *ret_key, int *keylen_p)
     	struct mc_udp_hdr *udp_hdr = (struct mc_udp_hdr*) (pkt + sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
 	char* ascii_req = (char *)(udp_hdr) + sizeof(struct mc_udp_hdr);
 
-	if(ascii_req[0] == 'V' || ascii_req[0] == 'v')
-		return -1;
+	if(ascii_req[0] == 'V' || ascii_req[0] == 'v') return -1;
     
 	*pkt_data_p = ascii_req;
 
 	/* Step through request until next space (ignore first 4 characters 'GET/SET '*/
-	for(key_len=0; key_len < KEY_LENGTH; key_len++) {
+	for(key_len=0; key_len <= KEY_LENGTH; key_len++) {
 		if(ascii_req[key_len+4] == ' ' || ascii_req[key_len+4] == '\r') {
 			break;
 		}
@@ -217,7 +216,6 @@ mc_process(void *pkt, int pkt_len, int *ret_len) {
 
 	parse_mc_pkt(pkt, &pkt_data, g_key, &key_len);
 	assert(pkt_data);
-	/* printc("dbg  kl %d %.*s\n", key_len, key_len, g_key); */
 	assert(key_len == KEY_LENGTH);
 
 	eth_hdr     = (struct ether_hdr *)pkt;
@@ -233,7 +231,7 @@ mc_process(void *pkt, int pkt_len, int *ret_len) {
 		reform_set_response(pkt_data, g_key, key_len);
 	}
 		
-		/* switch headers */
+	/* switch headers */
 	ether_addr_copy(&eth_hdr->d_addr, &eth_temp);
 	ether_addr_copy(&eth_hdr->s_addr, &eth_hdr->d_addr);
 	ether_addr_copy(&eth_temp, &eth_hdr->s_addr);
@@ -271,8 +269,8 @@ mc_populate(int num_key)
 	g_key[i++] = '-';
 	str = &(g_key[i]);
 	for(i=0; i<num_key; i++) {
-		sprintf(str, "%04d", i);
-		/* printc("%s\n", g_key); */
+		sprintf(str, "%06d", i);
 		mc_set_key(g_key, KEY_LENGTH, g_val, V_LENGTH);
 	}
+	return 0;
 }

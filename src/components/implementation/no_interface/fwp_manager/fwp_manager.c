@@ -228,10 +228,10 @@ _fwp_fork_cont(struct cos_compinfo *parent_cinfo, struct click_info *chld_info,
 		r = eos_initaep_alloc(coreid, &chld_info->def_cinfo, NULL, 0, 0, 0, &(chld_info->initaep));
 		assert(!r);
 		if (!coreid) {
-			eos_thd_param_set(coreid, &(chld_info->initaep), sched_param_pack(SCHEDP_PRIO, (LOWEST_PRIORITY-1)));
+			eos_thd_param_set(coreid, &(chld_info->initaep), sched_param_pack(SCHEDP_PRIO, (LOWEST_PRIORITY)));
 			_alloc_tls(parent_cinfo, child_cinfo, child_aep->thd, PAGE_SIZE);
 		} else {
-			eos_thd_param_set(coreid, &(chld_info->initaep), sched_param_pack(SCHEDP_PRIO_BLOCK, (LOWEST_PRIORITY-1)));
+			eos_thd_param_set(coreid, &(chld_info->initaep), sched_param_pack(SCHEDP_PRIO_BLOCK, (LOWEST_PRIORITY)));
 			r = eos_thd_set_tls(coreid, parent_cinfo, &(chld_info->def_cinfo.sched_aep[coreid].thd), (void *)heap_ptr);
 			assert(!r);
 		}

@@ -16,8 +16,8 @@
 /*#define MC_IPC       1*/
 #define SET_RPC_TEST 1
 #define KEY_LENGTH            16
-#define KEY_PREFIX_LENGTH     (KEY_LENGTH - 5)
-#define V_LENGTH              (100)
+#define KEY_PREFIX_LENGTH     (KEY_LENGTH - 7) /* 1 byte for '-', the rest for key number (000000 - 999999). based on mcblaster */
+#define V_LENGTH              (135)
 #define MC_ITEM_MAX_NUM       100
 #define MC_MEM_EVICT_MAX      1
 #define MC_MEM_EVICT_THOLD    99
