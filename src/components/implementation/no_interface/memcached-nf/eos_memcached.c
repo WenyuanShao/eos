@@ -14,7 +14,8 @@ static struct eos_ring *input_ring, *ouput_ring;
 static int
 mc_pkt_collect(struct eos_ring *recv, struct eos_ring *sent)
 {
-	if (!(prev_collect--)) {
+	/* if (!(prev_collect--)) { */
+	if (1) {
 		prev_collect = eos_pkt_collect(recv, sent)*MC_COLLECT_MULTIP;
 		if (!prev_collect) /* nf_hyp_block() */;
 		else prev_collect--;
