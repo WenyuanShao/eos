@@ -61,8 +61,8 @@ void
 cos_init(void *args)
 {
        nf_hyp_confidx_get(&conf_file_idx);
-       nf_hyp_get_shmem_addr(&shmem_addr); 
-       /* printc ("dbg shmem %p conf %d\n", shmem_addr, conf_file_idx); */
+       nf_hyp_get_shmem_addr(&shmem_addr);
+       /* printc("dbg shmem %p conf %d\n", shmem_addr, conf_file_idx); */
        input_ring = get_input_ring((void *)shmem_addr);
        ouput_ring = get_output_ring((void *)shmem_addr);
 

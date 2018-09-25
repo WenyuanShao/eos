@@ -5,10 +5,10 @@
 #include "fwp_chain_cache.h"
 #include "eos_sched.h"
 
-#define NO_FLOW_ISOLATION
+/* #define NO_FLOW_ISOLATION */
 /* #define PER_FLOW_CHAIN */
 /* #define SINGLE_PING_CHURN_TEST */
-/* #define FIXED_NF_CHAIN */
+#define FIXED_NF_CHAIN
 /* #define DBG_REMOVE_MCA */
 #define DPDK_PKT_OFF 256
 #define NF_PER_CORE_BATCH 1
@@ -223,7 +223,7 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 	}
 	ninf_ring = ninf_get_nf_ring(mbuf);
 	assert(ninf_ring);
-	
+
 	do {
 		/* if (prev_collect <= 0)  */prev_collect = ninf_pkt_collect(ninf_ring);
 		ninf_ring->cached.cnt = EOS_PKT_PER_ENTRY;
@@ -263,9 +263,9 @@ ninf_rx_loop()
 	while (1) {
 		if (fix_rx_outs[i]) {
 			/* ninf_pkt_collect(fix_rx_outs[i]); */
-			fix_rx_outs[i]->cached.cnt = fix_rx_outs[i]->cached.idx;
-			eos_pkt_send_flush(fix_rx_outs[i]);
-			fix_rx_outs[i]->cached.cnt = EOS_PKT_PER_ENTRY;;
+			/* fix_rx_outs[i]->cached.cnt = fix_rx_outs[i]->cached.idx; */
+			/* eos_pkt_send_flush(fix_rx_outs[i]); */
+			/* fix_rx_outs[i]->cached.cnt = EOS_PKT_PER_ENTRY; */;
 		}
 		i = (i+1) % EOS_MAX_FLOW_NUM;
 		for(port=0; port<NUM_NIC_PORTS; port++) {
