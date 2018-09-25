@@ -171,7 +171,7 @@ ninf_get_nf_ring(struct rte_mbuf *mbuf)
 	int cid;
 
 	ninf_fill_key_symmetric(&pkt_key, mbuf);
-	rss = ninf_rss(&pkt_key);
+	rss = mbuf->hash.rss;
 	ninf_ring = ninf_flow_tbl_lkup(mbuf, &pkt_key, rss);
 
 	if (!ninf_ring) {

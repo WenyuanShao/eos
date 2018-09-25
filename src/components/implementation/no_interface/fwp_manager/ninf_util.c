@@ -27,8 +27,37 @@
 extern struct eos_ring *ninf_ft_data[EOS_MAX_CHAIN_NUM];
 extern struct rte_mempool *rx_mbuf_pool;
 
+uint8_t rss_symmetric_key[40] = { 0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,
+				  0x6d, 0x5a, 0x6d, 0x5a,};
+
 static const struct rte_eth_conf port_conf_default = {
-	.rxmode = { .max_rx_pkt_len = ETHER_MAX_LEN }
+        .rxmode = {
+                .mq_mode        = ETH_MQ_RX_RSS,
+                .max_rx_pkt_len = ETHER_MAX_LEN,
+                .split_hdr_size = 0,
+                .header_split   = 0,                    /* header split disabled */
+                .hw_ip_checksum = 0,                    /* IP checksum offload enabled */
+                .hw_vlan_filter = 0,                    /* VLAN filtering disabled */
+                .jumbo_frame    = 0,                    /* jumbo frame support disabled */
+                .hw_strip_crc   = 1,                    /* CRC stripped by hardware */
+        },
+        .rx_adv_conf = {
+                .rss_conf = {
+                        .rss_key = rss_symmetric_key,
+                        .rss_hf  = ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP,
+                },
+        },
+        .txmode = {
+                .mq_mode = ETH_MQ_TX_NONE,
+	},
 };
 
 static const struct rte_eth_rxconf rx_conf = {
@@ -50,17 +79,6 @@ static const struct rte_eth_txconf tx_conf = {
         .tx_rs_thresh   = 0,
         .txq_flags      = 0,
 };
-
-uint8_t rss_symmetric_key[40] = { 0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,
-				  0x6d, 0x5a, 0x6d, 0x5a,};
 
 /* basicfwd.c: Basic DPDK skeleton forwarding example. */
 
