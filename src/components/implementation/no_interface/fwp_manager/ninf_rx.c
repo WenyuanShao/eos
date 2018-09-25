@@ -283,5 +283,5 @@ ninf_rx_init()
 	major_core_id = NF_MIN_CORE;
 	minor_core_id = 0;
 	global_chain = NULL;
-	ninf_ft_init(&ninf_ft, EOS_MAX_FLOW_NUM, sizeof(struct eos_ring *));
+	ninf_ft_init(&ninf_ft, EOS_MAX_CHAIN_NUM, sizeof(struct eos_ring *));
 }

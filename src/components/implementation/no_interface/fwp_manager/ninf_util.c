@@ -24,7 +24,7 @@
 #define TX_PTHRESH 36 /* Default values of TX prefetch threshold reg. */
 #define TX_HTHRESH 0  /* Default values of TX host threshold reg. */
 #define TX_WTHRESH 0 /* Default values of TX write-back threshold reg. */
-extern struct eos_ring *ninf_ft_data[EOS_MAX_FLOW_NUM];
+extern struct eos_ring *ninf_ft_data[EOS_MAX_CHAIN_NUM];
 extern struct rte_mempool *rx_mbuf_pool;
 
 static const struct rte_eth_conf port_conf_default = {
