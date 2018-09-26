@@ -25,6 +25,7 @@ static struct eos_ring *global_rx_out;
 static struct eos_ring *fix_rx_outs[EOS_MAX_FLOW_NUM] = {NULL};
 static int chain_idx = 0, prev_collect = 32*EOS_PKT_COLLECT_MULTIP;
 static int tot_rx = 0;
+static long long int tot_free_mbuf = NUM_MBUFS * 2;
 
 static inline int
 ninf_pkt_collect(struct eos_ring *r)
@@ -47,6 +48,7 @@ ninf_pkt_collect(struct eos_ring *r)
 		ret++;
 		nxt = (struct eos_ring_node *)GET_RING_NODE(r, r->head & EOS_RING_MASK);
 		__builtin_prefetch(nxt, 1);
+		tot_free_mbuf += (long long int)cnt;
 	}
 
 	return ret * EOS_PKT_COLLECT_MULTIP;
@@ -231,7 +233,11 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 		r = eos_pkt_send(ninf_ring, rte_pktmbuf_mtod(mbuf, void *), rte_pktmbuf_data_len(mbuf), IN2OUT_PORT(in_port));
 	} while (unlikely(r == -ECOLLET));
 	/* drop pkts */
-	if (unlikely(r)) rte_pktmbuf_free(mbuf);
+	/* if (unlikely(r)) rte_pktmbuf_free(mbuf); */
+	if (unlikely(r)) {
+		rte_pktmbuf_free(mbuf);
+		tot_free_mbuf += (long long int)1;
+	}
 	else prev_collect--;
 }
 
@@ -239,6 +245,7 @@ static inline void
 ninf_rx_proc_batch(struct rte_mbuf **mbufs, int nbuf, int in_port)
 {
 	int i;
+	tot_free_mbuf -= (long long int)nbuf;
 	for(i=0; i< (nbuf & (~(unsigned)0x3)); i+=4) {
 		ninf_rx_proc_mbuf(mbufs[i], in_port);
 		ninf_rx_proc_mbuf(mbufs[i+1], in_port);
@@ -255,19 +262,36 @@ ninf_rx_proc_batch(struct rte_mbuf **mbufs, int nbuf, int in_port)
 	}
 }
 
+static inline int
+rx_collect_all_nf(int burst)
+{
+	int i, tr;
+	do {
+		tr = 0;
+		for(i=0; i<EOS_MAX_FLOW_NUM; i++) {
+			if (fix_rx_outs[i]) {
+				tr += ninf_pkt_collect(fix_rx_outs[i]);
+			}
+		}
+		burst -= tr;
+	} while (burst > 0 && tr > 0);
+	return burst;
+}
+
 void
 ninf_rx_loop()
 {
 	int port=0, i=0;
 
 	while (1) {
-		if (fix_rx_outs[i]) {
-			/* ninf_pkt_collect(fix_rx_outs[i]); */
-			/* fix_rx_outs[i]->cached.cnt = fix_rx_outs[i]->cached.idx; */
-			/* eos_pkt_send_flush(fix_rx_outs[i]); */
-			/* fix_rx_outs[i]->cached.cnt = EOS_PKT_PER_ENTRY; */;
-		}
-		i = (i+1) % EOS_MAX_FLOW_NUM;
+		if (tot_free_mbuf < 6000) rx_collect_all_nf(500);
+		/* if (fix_rx_outs[i]) { */
+		/* 	ninf_pkt_collect(fix_rx_outs[i]); */
+		/* 	/\* fix_rx_outs[i]->cached.cnt = fix_rx_outs[i]->cached.idx; *\/ */
+		/* 	/\* eos_pkt_send_flush(fix_rx_outs[i]); *\/ */
+		/* 	/\* fix_rx_outs[i]->cached.cnt = EOS_PKT_PER_ENTRY; *\/; */
+		/* } */
+		/* i = (i+1) % EOS_MAX_FLOW_NUM; */
 		for(port=0; port<NUM_NIC_PORTS; port++) {
 			const u16_t nb_rx = rte_eth_rx_burst(port, 0, rx_batch_mbufs, BURST_SIZE);
 
