@@ -14,6 +14,7 @@
 #define NF_PER_CORE_BATCH 1
 #define DPDK_PKT2MBUF(pkt) ((struct rte_mbuf *)((void *)(pkt) - DPDK_PKT_OFF))
 #define IN2OUT_PORT(port) ((port))
+#define FLOW_START_PORT 11211
 
 struct rte_mempool *rx_mbuf_pool;
 struct eos_ring *ninf_ft_data[EOS_MAX_FLOW_NUM];
@@ -150,17 +151,23 @@ ninf_get_nf_ring(struct rte_mbuf *mbuf)
 #endif
 
 #ifdef PER_FLOW_CHAIN
-	uint32_t rss;
+	int cid, coreid;
+	struct nf_chain *fix_chain;
 	struct eos_ring *ninf_ring;
 	struct pkt_ipv4_5tuple pkt_key;
 
 	ninf_fill_key_symmetric(&pkt_key, mbuf);
-	rss = ninf_rss(&pkt_key);
-	ninf_ring = ninf_flow_tbl_lkup(mbuf, &pkt_key, rss);
-	if (!ninf_ring) {
-		ninf_proc_new_flow(mbuf, &pkt_key, rss);
-		ninf_ring = ninf_flow_tbl_lkup(mbuf, &pkt_key, rss);
-		fix_rx_outs[chain_idx++] = ninf_ring;
+	cid = ntohs(pkt_key.dst_port) - FLOW_START_PORT;
+	assert(cid < EOS_MAX_FLOW_NUM);
+	ninf_ring = fix_rx_outs[cid];
+	if (unlikely(!ninf_ring)) {
+		coreid = ninf_flow2_core(NULL, NULL, 0);
+		fix_chain = fwp_chain_get(FWP_CHAIN_CLEANED, coreid);
+		assert(fix_chain);
+		ninf_ring = ninf_setup_new_chain(fix_chain);
+		fix_rx_outs[cid] = ninf_ring;
+		/* printc("dbg rx per cid %d mxc %d rss %u\n", chain_idx, EOS_MAX_CHAIN_NUM, rss); */
+		/* printc("dbg rx key si %d di %d sp %d dp %d %d\n", pkt_key.src_addr, pkt_key.dst_addr, pkt_key.src_port, pkt_key.dst_port, ); */
 	}
 	return ninf_ring;
 #endif
