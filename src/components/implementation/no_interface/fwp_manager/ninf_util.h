@@ -19,7 +19,7 @@
 #include "eos_ring.h"
 
 #define NUM_NIC_PORTS 2
-#define NUM_MBUFS 8192/* 4096 */
+#define NUM_MBUFS (2*8192)/* 4096 */
 #define MBUF_CACHE_SIZE 512
 #define BURST_SIZE 32
 #define IP_PROTOCOL_TCP 6

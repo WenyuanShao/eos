@@ -6,9 +6,9 @@
 #include "eos_sched.h"
 
 /* #define NO_FLOW_ISOLATION */
-/* #define PER_FLOW_CHAIN */
+#define PER_FLOW_CHAIN
 /* #define SINGLE_PING_CHURN_TEST */
-#define FIXED_NF_CHAIN
+/* #define FIXED_NF_CHAIN */
 /* #define DBG_REMOVE_MCA */
 #define DPDK_PKT_OFF 256
 #define NF_PER_CORE_BATCH 1
@@ -17,7 +17,7 @@
 #define FLOW_START_PORT 11211
 
 struct rte_mempool *rx_mbuf_pool;
-struct eos_ring *ninf_ft_data[EOS_MAX_FLOW_NUM];
+struct eos_ring *ninf_ft_data[EOS_MAX_CHAIN_NUM];
 static struct ninf_ft ninf_ft;
 static struct rte_mbuf *rx_batch_mbufs[BURST_SIZE];
 static int major_core_id, minor_core_id;
@@ -183,7 +183,7 @@ ninf_get_nf_ring(struct rte_mbuf *mbuf)
 	rss = mbuf->hash.rss;
 	ninf_ring = ninf_flow_tbl_lkup(mbuf, &pkt_key, rss);
 
-	if (!ninf_ring) {
+	if (unlikely(!ninf_ring)) {
 		if (!fix_rx_outs[chain_idx]) {
 			cid = ninf_flow2_core(NULL, NULL, 0);
 			fix_chain = fwp_chain_get(FWP_CHAIN_CLEANED, cid);
