@@ -299,6 +299,14 @@ ninf_rx_loop()
 		/* 	/\* fix_rx_outs[i]->cached.cnt = EOS_PKT_PER_ENTRY; *\/; */
 		/* } */
 		/* i = (i+1) % EOS_MAX_FLOW_NUM; */
+
+		if (fix_rx_outs[i]) {
+			/* ninf_pkt_collect(fix_rx_outs[i]); */
+			fix_rx_outs[i]->cached.cnt = fix_rx_outs[i]->cached.idx;
+			eos_pkt_send_flush(fix_rx_outs[i]);
+			fix_rx_outs[i]->cached.cnt = EOS_PKT_PER_ENTRY;;
+		}
+		i = (i+1) % EOS_MAX_FLOW_NUM;
 		for(port=0; port<NUM_NIC_PORTS; port++) {
 			const u16_t nb_rx = rte_eth_rx_burst(port, 0, rx_batch_mbufs, BURST_SIZE);
 

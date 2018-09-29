@@ -32,7 +32,7 @@ eos_get_packet(int *len, int *port)
        mc_pkt_collect(input_ring, ouput_ring);
        pkt = eos_pkt_recv(input_ring, len, port, &err, ouput_ring);
        while (unlikely(!pkt)) {
-	       if (err == -EBLOCK) /* nf_hyp_block() */;
+	       if (err == -EBLOCK) nf_hyp_block();
 	       else if (err == -ECOLLET) mc_pkt_collect(input_ring, ouput_ring);
 	       pkt = eos_pkt_recv(input_ring, len, port, &err, ouput_ring);
        }

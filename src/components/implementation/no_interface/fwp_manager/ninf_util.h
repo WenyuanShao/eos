@@ -110,7 +110,7 @@ ninf_fill_key_symmetric(struct pkt_ipv4_5tuple *key, struct rte_mbuf *pkt)
                 key->src_addr = temp;
 	}
 
-	if (key->dst_port > key->src_port) {
+	if (ntohs(key->dst_port) > ntohs(key->src_port)) {
                 uint16_t temp = key->dst_port;
                 key->dst_port = key->src_port;
                 key->src_port = temp;
