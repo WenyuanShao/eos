@@ -53,11 +53,12 @@ extern "C"{
 #define CLICK_COLLECT_THRESH (32*EOS_PKT_PER_ENTRY)
 	extern void click_block();
 	static int prev_collect = CLICK_COLLECT_THRESH;
-	int dbg_click_pkt_collect(struct eos_ring *recv, struct eos_ring *sent)
+	int dbg_click_pkt_collect(struct eos_ring *recv, struct eos_ring *sent, int blk)
 	{
-		if (!(prev_collect--)) {
+		// if (!(prev_collect--)) {
+		if (1) {
 			prev_collect = eos_pkt_collect(recv, sent)*EOS_PKT_PER_ENTRY;
-			if (!prev_collect) click_block();
+			if (!prev_collect && blk) click_block();
 			else prev_collect--;
 		}
 		return prev_collect;
@@ -112,11 +113,11 @@ FromRing::run_task(Task *)
        struct eos_ring *input_ring = get_input_ring((void *)shmem_addr);
        struct eos_ring *ouput_ring = get_output_ring((void *)shmem_addr);
 
-       dbg_click_pkt_collect(input_ring, ouput_ring);
+       dbg_click_pkt_collect(input_ring, ouput_ring, 0);
        pkt = eos_pkt_recv(input_ring, &len, &port, &err, ouput_ring);
        while (unlikely(!pkt)) {
 	       if (err == -EBLOCK) click_block();
-	       else if (err == -ECOLLET) dbg_click_pkt_collect(input_ring, ouput_ring);
+	       else if (err == -ECOLLET) dbg_click_pkt_collect(input_ring, ouput_ring, 1);
 	       pkt = eos_pkt_recv(input_ring, &len, &port, &err, ouput_ring);
        }
        p = Packet::make((unsigned char*) pkt, len, NULL, NULL, port);

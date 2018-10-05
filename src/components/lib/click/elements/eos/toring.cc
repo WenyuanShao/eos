@@ -50,7 +50,7 @@ extern "C" {
        #include <eos_ring.h>
        #include <eos_pkt.h>
 	extern void click_block();
-	extern int dbg_click_pkt_collect(struct eos_ring *recv, struct eos_ring *sent);
+	extern int dbg_click_pkt_collect(struct eos_ring *recv, struct eos_ring *sent, int blk);
 }
 
 CLICK_DECLS
@@ -101,7 +101,7 @@ ToRing::push(int port, Packet *p)
        r = eos_pkt_send(output_ring, (void *)p->data(), p->length(), p->port());
        while (unlikely(r)) {
 	       if (r == -EBLOCK) { printc("Q\n"); click_block();}
-	       else if (r == -ECOLLET) { printc("E\n"); dbg_click_pkt_collect(input_ring, output_ring);}
+	       else if (r == -ECOLLET) { printc("E\n"); dbg_click_pkt_collect(input_ring, output_ring, 1);}
 	       r = eos_pkt_send(output_ring, (void *)p->data(), p->length(), p->port());
        }
        p->kill();
