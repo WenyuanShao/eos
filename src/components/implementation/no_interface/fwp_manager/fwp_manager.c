@@ -238,7 +238,7 @@ _fwp_fork_cont(struct cos_compinfo *parent_cinfo, struct click_info *chld_info,
 	} else {
 		chld_info->initaep = NULL;
 	}
-
+	printc("~~~~~~~~~~~~~~~~~\n");
 	/* Create sinv capability from Userspace to Booter components */
 	sinv = cos_sinv_alloc_at(parent_cinfo, parent_cinfo->comp_cap, (vaddr_t)nf_entry_rets_inv, (vaddr_t)chld_info, BOOT_CAPTBL_FIX_SINV);
 	assert(sinv == BOOT_CAPTBL_FIX_SINV);
@@ -406,7 +406,6 @@ fwp_allocate_chain(struct nf_chain *chain, int is_template, int coreid)
 		else nf_data_seg = this_nf->data_seg;
 		fwp_fork(this_nf, t_seg, nf_data_seg, &mem_seg, this_nf->conf_file_idx, cinfo_offset, s_addr, coreid);
 	}
-
 	if (!is_template) {
 		list_for_each_nf(this_nf, chain) {
 			if (this_nf->nd_sinv) {
@@ -459,7 +458,6 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 	cinfo_offset = comp_info_offset;
 	s_addr = start_addr;
 	shmem_inv_addr = sinv_next_call;
-
 	fwp_init();
 	mca_init(CURR_CINFO());
 	ninf_init();
@@ -473,7 +471,6 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 	chain = fwp_create_chain_multi_tency(1);
 	/* chain = fwp_create_chain_multi_tency_share(2); */
 	fwp_allocate_chain(chain, 1, 0);
-
 	for(i=NF_MIN_CORE; i<NF_MAX_CORE; i++) {
 		for(j=0; j<EOS_MAX_CHAIN_NUM_PER_CORE; j++) {
 			/* printc("core %d j %d tot %d cap fronteers: %lu %lu heap %x untype %x fonter %x\n", i, j, j + (i-NF_MIN_CORE)*EOS_MAX_CHAIN_NUM_PER_CORE, CURR_CINFO()->cap_frontier, CURR_CINFO()->caprange_frontier, CURR_CINFO()->vas_frontier, CURR_CINFO()->mi.untyped_ptr, CURR_CINFO()->mi.untyped_frontier); */

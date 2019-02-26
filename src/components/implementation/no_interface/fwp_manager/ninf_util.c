@@ -163,18 +163,19 @@ dpdk_init(void)
 
 	ret = rte_eal_init(argc, argv);
 	if (ret < 0) return ret;
-	/* printc("\nDPDK EAL init done.\n"); */
+	printc("\nDPDK EAL init done.\n");
 
 	nb_ports = rte_eth_dev_count();
+	printc("%d ports available.\n", nb_ports);
 	assert(nb_ports == NUM_NIC_PORTS);
-	/* printc("%d ports available.\n", nb_ports); */
 
 	rx_mbuf_pool = rte_pktmbuf_pool_create("RX_MBUF_POOL", NUM_MBUFS * nb_ports, MBUF_CACHE_SIZE, 0, RX_MBUF_SIZE, -1);
+	printc("	pktmbuf_pool created: %d\n", rx_mbuf_pool);
 	if (!rx_mbuf_pool) return -2;
 
 	if (rte_eth_dev_cos_setup_ports(nb_ports, rx_mbuf_pool) < 0)
 		return -2;
-	/* printc("\nPort init done.\n"); */
+	printc("\nPort init done.\n");
 
 	return 0;
 }
@@ -183,11 +184,11 @@ void
 check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
 {
 #define CHECK_INTERVAL 100 /* 100ms */
-#define MAX_CHECK_TIME 90 /* 9s (90 * 100ms) in total */
+#define MAX_CHECK_TIME 500 /* 9s (90 * 100ms) in total */
 	uint8_t portid, count, all_ports_up, print_flag = 0;
 	struct rte_eth_link link;
 
-	/* printc("\nChecking link status"); */
+	printc("\nChecking link status\n");
 	for (count = 0; count <= MAX_CHECK_TIME; count++) {
 		all_ports_up = 1;
 		for (portid = 0; portid < port_num; portid++) {
@@ -222,9 +223,11 @@ check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
 		}
 
 		/* set the print_flag if all ports up or timeout */
-		if (all_ports_up == 1 || count == (MAX_CHECK_TIME - 1)) {
+		//if (all_ports_up == 1 || count == (MAX_CHECK_TIME - 1)) {
+		if (all_ports_up == 1) {
 			print_flag = 1;
 			printc("done\n");
+			break;
 		}
 	}
 }

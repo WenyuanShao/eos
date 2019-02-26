@@ -5,7 +5,7 @@
 #include "fwp_chain_cache.h"
 #include "eos_sched.h"
 
-/* #define NO_FLOW_ISOLATION */
+//#define NO_FLOW_ISOLATION
 #define PER_FLOW_CHAIN
 /* #define SINGLE_PING_CHURN_TEST */
 /* #define FIXED_NF_CHAIN */
@@ -226,9 +226,10 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 
 	assert(mbuf);
 
-        if (unlikely(!ninf_pkt_is_ipv4(mbuf))) {
-		rte_eth_tx_burst(!in_port, 0, &mbuf, 1);
-                return ;
+    if (unlikely(!ninf_pkt_is_ipv4(mbuf))) {
+		//rte_eth_tx_burst(!in_port, 0, &mbuf, 1);
+		rte_eth_tx_burst(in_port, 0, &mbuf, 1);
+        return ;
 	}
 	ninf_ring = ninf_get_nf_ring(mbuf);
 	assert(ninf_ring);
@@ -309,8 +310,10 @@ ninf_rx_loop()
 		i = (i+1) % EOS_MAX_FLOW_NUM;
 		for(port=0; port<NUM_NIC_PORTS; port++) {
 			const u16_t nb_rx = rte_eth_rx_burst(port, 0, rx_batch_mbufs, BURST_SIZE);
-
-			if (likely(nb_rx>0)) ninf_rx_proc_batch(rx_batch_mbufs, nb_rx, port);
+			if (likely(nb_rx>0)) {
+				//ninf_rx_proc_batch(rx_batch_mbufs, nb_rx, port);
+				printc("package received: %d tot %d\n", nb_rx, tot_rx);
+			}
 			tot_rx += nb_rx;
 		}
 	}

@@ -99,6 +99,6 @@ ninf_init(void)
 	ret = dpdk_init();
 	assert(!ret);
 
-	check_all_ports_link_status(NUM_NIC_PORTS, 3);
+	check_all_ports_link_status(NUM_NIC_PORTS, 1);
 }
 

@@ -6,7 +6,7 @@ typedef unsigned short u16;
 typedef unsigned long u32;
 #define ETHER_ADDR_LEN  6
 static int udp_len;
-static char g_key[KEY_LENGTH], g_val[V_LENGTH];
+static char g_key[KEY_LENGTH+1], g_val[V_LENGTH+1];
 static char format[20];
 
 // UDP header info from: https://github.com/memcached/memcached/blob/master/doc/protocol.txt#L51
@@ -101,7 +101,6 @@ mc_set_key(char *key, int nkey, char *data, int nbytes)
 	}
 	memcpy(ITEM_data(it), data, nbytes);
 	it->hv = hv;
-
 	old_it = do_item_get(key, nkey, hv);
 	if (!old_it) do_item_link(it, hv);
 	else do_item_replace(old_it, it, hv);
