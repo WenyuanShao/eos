@@ -20,7 +20,7 @@ LIBSTDCXXOBJ=$(LIBCXXDIR)/libstdc++.a
 LIBSUPCXXOBJ=$(LIBCXXDIR)/libsupc++.a
 
 LWIPBASE=$(CDIR)/lib/lwip
-LWIPDIR=$(LWIPBASE)/lwip-1.3.0
+LWIPDIR=$(LWIPBASE)/lwip-2.1.2
 LWIPOBJ=$(LWIPBASE)/cos/net_stack.o
 LWIPINC=-I$(LWIPDIR)/src/include -I$(LWIPDIR)/src/include/ipv4/ -I$(LWIPBASE)/cos/include/
 

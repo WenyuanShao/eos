@@ -48,9 +48,8 @@ ARFLAGS=rs
 LWIPDIR=../lwip-2.1.2/src
 MUSLINC=../../musl-1.1.11/include/
 
-INCLUDES=-I$(LWIPDIR)/include -I$(PSINC) -I./include -I$(LWIPDIR)/include/ipv4 -I. $(CINC) -I$(MUSLINC) -I$(CDIR)/include -I$(INTERDIR)/cbuf_mgr
+INCLUDES=-I$(LWIPDIR)/include -I./include -I$(LWIPDIR)/include/ipv4 -I. $(CINC) -I$(MUSLINC)
 CFLAGS:=$(CFLAGS) $(INCLUDES) 
-
 
 # COREFILES, CORE4FILES: The minimum set of files needed for lwIP.
 COREFILES=$(LWIPDIR)/core/mem.c $(LWIPDIR)/core/memp.c $(LWIPDIR)/core/netif.c \
@@ -59,9 +58,9 @@ COREFILES=$(LWIPDIR)/core/mem.c $(LWIPDIR)/core/memp.c $(LWIPDIR)/core/netif.c \
         $(LWIPDIR)/core/tcp.c $(LWIPDIR)/core/tcp_in.c \
         $(LWIPDIR)/core/tcp_out.c $(LWIPDIR)/core/udp.c \
 	$(LWIPDIR)/core/init.c $(LWIPDIR)/core/inet_chksum.c \
-	$(LWIPDIR)/core/def.c $(LWIPDIR)/core/timers.c
+	$(LWIPDIR)/core/def.c $(LWIPDIR)/core/timeouts.c
 CORE4FILES=$(LWIPDIR)/core/ipv4/icmp.c $(LWIPDIR)/core/ipv4/ip4.c \
-	$(LWIPDIR)/core/ipv4/ip4_addr.c $(LWIPDIR)/core/ipv4/ip_frag.c  
+	$(LWIPDIR)/core/ipv4/ip4_addr.c $(LWIPDIR)/core/ipv4/ip4_frag.c
 
 # SNMPFILES: Extra SNMPv1 agent
 # SNMPFILES=$(LWIPDIR)/core/snmp/asn1_dec.c $(LWIPDIR)/core/snmp/asn1_enc.c \

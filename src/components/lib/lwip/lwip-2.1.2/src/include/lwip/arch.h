@@ -126,13 +126,13 @@ typedef uint8_t   u8_t;
 typedef int8_t    s8_t;
 typedef uint16_t  u16_t;
 typedef int16_t   s16_t;
-typedef uint32_t  u32_t;
-typedef int32_t   s32_t;
+//typedef uint32_t  u32_t;
+//atypedef int32_t   s32_t;
 #if LWIP_HAVE_INT64
 typedef uint64_t  u64_t;
 typedef int64_t   s64_t;
 #endif
-typedef uintptr_t mem_ptr_t;
+//typedef uintptr_t mem_ptr_t;
 #endif
 
 /** Define this to 1 in arch/cc.h of your port if your compiler does not provide

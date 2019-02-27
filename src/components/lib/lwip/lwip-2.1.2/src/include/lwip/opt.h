@@ -210,7 +210,7 @@
  * you disable this, you must be sure what you are doing!
  */
 #if !defined SYS_LIGHTWEIGHT_PROT || defined __DOXYGEN__
-#define SYS_LIGHTWEIGHT_PROT            1
+#define SYS_LIGHTWEIGHT_PROT            0
 #endif
 
 /**
