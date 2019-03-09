@@ -121,6 +121,11 @@ const int lwip_num_cyclic_timers = LWIP_ARRAYSIZE(lwip_cyclic_timers);
 /** The one and only timeout list */
 static struct sys_timeo *next_timeout;
 
+u32_t
+sys_now() {
+	return 0;
+}
+
 static u32_t current_timeout_due_time;
 
 #if LWIP_TESTMODE

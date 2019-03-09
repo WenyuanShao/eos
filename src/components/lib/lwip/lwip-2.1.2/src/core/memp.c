@@ -50,6 +50,7 @@
 #include "lwip/stats.h"
 
 #include <string.h>
+#include <llprint.h>
 
 /* Make sure we include everything we need for size calculation required by memp_std.h */
 #include "lwip/pbuf.h"
@@ -345,7 +346,6 @@ memp_malloc_fn(memp_t type, const char *file, const int line)
 #if MEMP_OVERFLOW_CHECK >= 2
   memp_overflow_check_all();
 #endif /* MEMP_OVERFLOW_CHECK >= 2 */
-
 #if !MEMP_OVERFLOW_CHECK
   memp = do_memp_malloc_pool(memp_pools[type]);
 #else
