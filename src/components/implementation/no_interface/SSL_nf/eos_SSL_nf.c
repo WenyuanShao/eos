@@ -13,7 +13,8 @@ static struct ip4_addr ip, mask, gw;
 static struct netif cos_if;
 static vaddr_t shmem_addr;
 static struct eos_ring *input_ring, *output_ring;
-static void *curr_pkt;
+struct ether_addr eth_src, eth_dst;
+static int eth_copy = 0;
 //static struct tcp_pcb_listen *lpcb;
 
 struct ip4_hdr {
@@ -75,29 +76,29 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 	struct ip4_hdr *iphdr;
 	struct ether_hdr *eth_hdr;
 	struct ip4_hdr *ori_iphdr;
-	struct ether_addr eth_temp;
-	int r;
+	void *snd_pkt;
+	int r, len;
 
-	pl  = p->payload;
-	eth_hdr = (struct ether_hdr*)curr_pkt;
-
-	iphdr = (struct ip4_hdr *)pl;
+	pl      = p->payload;
+	len     = sizeof(struct ether_hdr) + p->len;
+	snd_pkt = eos_pkt_allocate(input_ring, len);
+	eth_hdr = (struct ether_hdr*)snd_pkt;
+	iphdr   = (struct ip4_hdr *)pl;
 	//temp = curr_pkt + sizeof(struct ether_addr);
 	//ori_iphdr = (struct ip4_hdr *) (pkt + sizeof(struct ether_hdr));
 	//printc("WWWWWWWWWWWW_src: %d\n" ,iphdr->src_addr);
 	//printc("WWWWWWWWWWWW_dst: %d\n" ,iphdr->dst_addr);
 
 	/* generate new ether_hdr*/
-	ether_addr_copy(&eth_hdr->dst_addr, &eth_temp);
-	ether_addr_copy(&eth_hdr->src_addr, &eth_hdr->dst_addr);
-	ether_addr_copy(&eth_temp, &eth_hdr->src_addr);
+	ether_addr_copy(&eth_src, &eth_hdr->src_addr);
+	ether_addr_copy(&eth_dst, &eth_hdr->dst_addr);
 
-	memcpy((curr_pkt + sizeof(struct ether_hdr)), pl, p->len);
+	memcpy((snd_pkt + sizeof(struct ether_hdr)), pl, p->len);
 	//printc("YYYYYYYYYYYY_src: %d\n" ,((struct ip4_hdr *)(curr_pkt + sizeof(struct ether_hdr)))->src_addr);
 	//printc("YYYYYYYYYYYY_dst: %d\n" ,((struct ip4_hdr *)(curr_pkt + sizeof(struct ether_hdr)))->dst_addr);
 	//printc("packet regenerated\n");
 
-	r = eos_pkt_send(output_ring, curr_pkt, (p->len + sizeof(struct ether_addr)), port);
+	r = eos_pkt_send(output_ring, snd_pkt, len, port);
 	assert(!r);
 	return ERR_OK;
 }
@@ -199,6 +200,12 @@ ssl_get_packet(int *len, int *port)
 		else if (err == -ECOLLET) eos_pkt_collect(input_ring, output_ring);
 		pkt = eos_pkt_recv(input_ring, len, port, &err, output_ring);
 	}
+	if (unlikely(!eth_copy)) {
+		struct ether_hdr *eth_hdr = (struct ether_hdr*)pkt;
+		eth_copy = 1;
+		ether_addr_copy(&eth_hdr->src_addr, &eth_src);
+		ether_addr_copy(&eth_hdr->dst_addr, &eth_dst);
+	}
 	return pkt;
 }
 
@@ -214,11 +221,15 @@ ssl_server_run() {
 		//printc("YYYYYYYYYYYY_dst: %d\n" ,((struct ip4_hdr *)(pkt + sizeof(struct ether_hdr)))->dst_addr);
 		
 		assert(pkt);
-		curr_pkt = pkt;
 		assert(len <= EOS_PKT_MAX_SZ);
+		if (input_ring->cached.idx == 1) output_ring->cached.cnt = EOS_PKT_PER_ENTRY; /* this is a new batch */
 		//printc("in ssl server\n %s", pkt);
 		cos_net_interrupt(len, pkt);
 		assert(len < EOS_PKT_MAX_SZ);
+		if (input_ring->cached.idx == input_ring->cached.cnt) { /* the end of this batch */
+			output_ring->cached.cnt = output_ring->cached.idx;
+			eos_pkt_send_flush(output_ring);
+		}
 		printc("------------------------------\n\n");
 		// application function.
 	}
