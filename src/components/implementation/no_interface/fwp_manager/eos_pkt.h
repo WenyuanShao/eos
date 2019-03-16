@@ -8,26 +8,22 @@
 #define ECOLLET 2
 #define ESENT   3
 
-/* FIXME: this does not work due to the change of eos_ring */
 static inline void *
 eos_pkt_allocate(struct eos_ring *ring, int len)
 {
-	/* int fh; */
-	/* volatile struct eos_ring_node *rn; */
-	/* void *ret = NULL; */
-	(void)len;
-	(void)ring;
-	return NULL;
+	struct eos_ring_node *cache;
+	struct pkt_meta *meta;
 
-	/* assert(len <= EOS_PKT_MAX_SZ); */
-	/* fh  = cos_faa(&(ring->free_head), 1); */
-	/* rn  = GET_RING_NODE(ring, fh & EOS_RING_MASK); */
-	/* if (ps_load(&(rn->state)) != PKT_FREE) return NULL; */
-	/* ret       = rn->pkt; */
-	/* rn->state = PKT_EMPTY; */
-	/* ps_cc_barrier(); */
-	/* rn->pkt   = NULL; */
-	/* return ret; */
+	assert(len <= EOS_PKT_MAX_SZ);
+	if (ring->cached.cnt == ring->cached.idx) {
+		assert(ring->cached.alloc_idx < EOS_PKT_PER_ENTRY);
+	} else {
+		assert(ring->cached.alloc_idx < ring->cached.idx);
+	}
+	cache = &(ring->cached);
+	meta  = &(cache->pkts[cache->alloc_idx]);
+	cache->alloc_idx++;
+	return meta->pkt;
 }
 
 /* FIXME: this does not work due to the change of eos_ring */
@@ -110,8 +106,9 @@ eos_pkt_recv_slow(struct eos_ring *ring, struct eos_ring *sent)
 		assert(sent->cached.cnt == 0);
 		assert(sent->cached.idx == 0);
 		memcpy(sent->cached.pkts, ring->cached.pkts, sizeof(ring->cached.pkts));
-		sent->cached.cnt = ring->cached.cnt;
-		rn->state = PKT_RECV_DONE;
+		ring->cached.alloc_idx = 0;
+		sent->cached.cnt       = ring->cached.cnt;
+		rn->state              = PKT_RECV_DONE;
 		ring->tail++;
 		/* cos_faa(&(ring->pkt_cnt), -1); */
 		return 0;
