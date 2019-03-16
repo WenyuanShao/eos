@@ -203,8 +203,8 @@ ssl_get_packet(int *len, int *port)
 	if (unlikely(!eth_copy)) {
 		struct ether_hdr *eth_hdr = (struct ether_hdr*)pkt;
 		eth_copy = 1;
-		ether_addr_copy(&eth_hdr->src_addr, &eth_src);
-		ether_addr_copy(&eth_hdr->dst_addr, &eth_dst);
+		ether_addr_copy(&eth_hdr->src_addr, &eth_dst);
+		ether_addr_copy(&eth_hdr->dst_addr, &eth_src);
 	}
 	return pkt;
 }
