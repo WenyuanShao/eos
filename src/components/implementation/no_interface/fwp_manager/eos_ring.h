@@ -10,7 +10,7 @@
 #define EOS_PKT_PER_ENTRY 8 /* 8 */
 #define EOS_PKT_COLLECT_MULTIP 1 /* EOS_PKT_PER_ENTRY */
 #define EOS_RING_MASK (EOS_RING_SIZE - 1)
-#define RING_NODE_PAD_SZ (2*CACHE_LINE - 3*sizeof(int) - EOS_PKT_PER_ENTRY*sizeof(struct pkt_meta))
+#define RING_NODE_PAD_SZ (2*CACHE_LINE - 3*sizeof(short) - sizeof(pkt_states_t) - EOS_PKT_PER_ENTRY*sizeof(struct pkt_meta))
 #define GET_RING_NODE(r, h) ((volatile struct eos_ring_node *)(&((r)->ring[(h)])))
 
 typedef enum {
@@ -31,7 +31,7 @@ struct pkt_meta {
 struct eos_ring;
 
 struct eos_ring_node {
-	int cnt, idx;
+	short cnt, idx, alloc_idx;
 	struct pkt_meta pkts[EOS_PKT_PER_ENTRY];
 	pkt_states_t state;
 	char pad[RING_NODE_PAD_SZ];

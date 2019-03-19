@@ -5,15 +5,18 @@
 #include <lwip/netif.h>
 #include <lwip/tcp.h>
 #include <lwip/stats.h>
+#include <lwip/prot/tcp.h>
 
 #define ETHER_ADDR_LEN 6
 static int conf_file_idx = 0;
 static const u16_t port = 0x01BB; // 443
+static u16_t tx_port; // 443
 static struct ip4_addr ip, mask, gw;
 static struct netif cos_if;
 static vaddr_t shmem_addr;
 static struct eos_ring *input_ring, *output_ring;
-static void *curr_pkt;
+struct ether_addr eth_src, eth_dst;
+static int eth_copy = 0;
 //static struct tcp_pcb_listen *lpcb;
 
 struct ip4_hdr {
@@ -39,27 +42,169 @@ struct ether_hdr {
 	uint16_t ether_type;
 } __attribute__((__packed__));
 
+struct echoserver_struct {
+	uint8_t state;
+	struct tcp_pcb *tp;
+	struct pbuf *p;
+};
+
+enum echoserver_state {
+	ES_NONE = 0,
+	ES_ACCEPTED,
+	ES_RECEIVED,
+	ES_CLOSING
+};
+
+static void
+ssl_print_pkt(void * pkt, int len) {
+	int i = 0;
+	printc("{ ");
+	for (i = 0; i < len; i++) {
+		printc("%02x ", ((uint8_t*)(pkt))[i]);
+	}
+	printc("}\n");
+}
+
 static void
 eos_lwip_tcp_err(void *arg,  err_t err)
 {
 	return;
 }
 
+static void eos_lwip_tcp_close(struct tcp_pcb *tp, struct echoserver_struct *es) {
+	tcp_arg(tp, NULL);
+	tcp_sent(tp, NULL);
+	tcp_recv(tp, NULL);
+	tcp_err(tp, NULL);
+
+	if (es != NULL) {
+		free(es);
+	}
+
+	tcp_close(tp);
+}
+
+static void
+eos_lwip_tcp_send(struct tcp_pcb *tp, struct echoserver_struct *es)
+{
+	struct pbuf *pchain;
+	err_t wr_err = ERR_OK;
+
+	while (wr_err == ERR_OK && (es->p != NULL) && (es->p->len <= tcp_sndbuf(tp))) {
+		pchain = es->p;
+		wr_err = tcp_write(tp, pchain->payload, pchain->len, 1);
+
+		if (wr_err == ERR_OK) {
+			u16_t plen;
+			plen = pchain->len;
+			es->p = pchain->next;
+			if (es->p != NULL) {
+				pbuf_ref(es->p);
+			}
+			pbuf_free(pchain);
+			tcp_recved(tp, plen);
+		} else if (wr_err == ERR_MEM){
+			assert(0);
+		} else assert(0);
+	}
+}
+
 static err_t
 eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 {
+	err_t ret_err;
+	struct echoserver_struct *es;
+
+	//printc("RRRRRRRRRRRRRR\n");
+	//ssl_print_pkt((void *)p->payload, p->len);
+
+	es = (struct echoserver_struct *)arg;
+	if (p == NULL) {
+		es->state = ES_CLOSING;
+		if (es->p == NULL){
+			eos_lwip_tcp_close(tp, es);
+		} else {
+			eos_lwip_tcp_send(tp, es);
+		}
+		return ERR_OK;
+	}
+
+	if (err != ERR_OK) {
+		if (p != NULL) {
+			es->p = NULL;
+			pbuf_free(p);
+		}
+		return err;
+	}
+
+	if (es->state == ES_ACCEPTED) {
+		es->state = ES_RECEIVED;
+		es->p = p;
+		/* send back the received data */
+		eos_lwip_tcp_send(tp, es);
+
+		return ERR_OK;
+	}
+
+	if (es->state == ES_RECEIVED) {
+		if (es->p == NULL) {
+			es->p = p;
+			/* send back the received data */
+			eos_lwip_tcp_send(tp, es);
+		} else {
+			struct pbuf *pchain;
+
+			pchain = es->p;
+			pbuf_chain(pchain, p);
+		}
+		return ERR_OK;
+	}
+	tcp_recved(tp, p->tot_len);
+	es->p = NULL;
+	pbuf_free(p);
+	return ERR_OK;
+}
+
+static err_t
+eos_lwip_tcp_sent(void *arg, struct tcp_pcb *tp, u16_t len)
+{
+	//printc("in eos_lwip_tcp_sent\n");
+	struct echoserver_struct *es;
+
+	es = (struct echoserver_struct *)arg;
+	if (es->p != NULL) {
+		eos_lwip_tcp_send(tp, es);
+	} else {
+		if (es->state == ES_CLOSING) {
+			eos_lwip_tcp_close(tp, es);
+		}
+	}
 	return ERR_OK;
 }
 
 static err_t
 eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 {
-	struct tcp_pcb_listen *lpcb = (struct tcp_pcb_listen*)arg;
-	//printc("!!!!!!!!!!!!!!!\n");
-	tcp_accepted(lpcb);
-	tcp_recv(tp, eos_lwip_tcp_recv);
-	tcp_err(tp, eos_lwip_tcp_err);
-	return ERR_OK;
+	err_t ret_err;
+	struct echoserver_struct *es;
+
+	//printc("AAAAAAAAAAAAAA\n");
+	es = (struct echoserver_struct *)malloc(sizeof(struct echoserver_struct));
+	if (es != NULL) {
+		es->state = ES_ACCEPTED;
+		es->tp = tp;
+		es->p = NULL;
+
+		tcp_arg(tp, es);
+		tcp_err(tp, eos_lwip_tcp_err);
+		tcp_recv(tp, eos_lwip_tcp_recv);
+		tcp_sent(tp, eos_lwip_tcp_sent);
+
+		ret_err = ERR_OK;
+	} else {
+		ret_err = ERR_MEM;
+	}
+	return ret_err;
 }
 
 static inline void
@@ -75,29 +220,34 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 	struct ip4_hdr *iphdr;
 	struct ether_hdr *eth_hdr;
 	struct ip4_hdr *ori_iphdr;
-	struct ether_addr eth_temp;
-	int r;
+	void *snd_pkt;
+	int r, len;
 
-	pl  = p->payload;
-	eth_hdr = (struct ether_hdr*)curr_pkt;
+	pl      = p->payload;
+	len     = sizeof(struct ether_hdr) + p->len;
+	snd_pkt = eos_pkt_allocate(input_ring, len);
+	eth_hdr = (struct ether_hdr*)snd_pkt;
+	iphdr   = (struct ip4_hdr *)pl;
 
 	iphdr = (struct ip4_hdr *)pl;
-	//temp = curr_pkt + sizeof(struct ether_addr);
-	//ori_iphdr = (struct ip4_hdr *) (pkt + sizeof(struct ether_hdr));
-	//printc("WWWWWWWWWWWW_src: %d\n" ,iphdr->src_addr);
-	//printc("WWWWWWWWWWWW_dst: %d\n" ,iphdr->dst_addr);
+	//printc("WWWWWWWWWWWW_src: 0x%08x\n" ,iphdr->src_addr);
+	//printc("WWWWWWWWWWWW_dst: 0x%08x\n" ,iphdr->dst_addr);
 
 	/* generate new ether_hdr*/
-	ether_addr_copy(&eth_hdr->dst_addr, &eth_temp);
-	ether_addr_copy(&eth_hdr->src_addr, &eth_hdr->dst_addr);
-	ether_addr_copy(&eth_temp, &eth_hdr->src_addr);
+	ether_addr_copy(&eth_src, &eth_hdr->src_addr);
+	ether_addr_copy(&eth_dst, &eth_hdr->dst_addr);
 
-	memcpy((curr_pkt + sizeof(struct ether_hdr)), pl, p->len);
-	//printc("YYYYYYYYYYYY_src: %d\n" ,((struct ip4_hdr *)(curr_pkt + sizeof(struct ether_hdr)))->src_addr);
-	//printc("YYYYYYYYYYYY_dst: %d\n" ,((struct ip4_hdr *)(curr_pkt + sizeof(struct ether_hdr)))->dst_addr);
+	memcpy((snd_pkt + sizeof(struct ether_hdr)), pl, p->len);
+	//printc("YYYYYYYYYYYY_src: 0x%08x\n" ,((struct ip4_hdr *)(snd_pkt + sizeof(struct ether_hdr)))->src_addr);
+	//printc("YYYYYYYYYYYY_dst: 0x%08x\n" ,((struct ip4_hdr *)(snd_pkt + sizeof(struct ether_hdr)))->dst_addr);
+	//printc("YYYYYYYYYYYY_csi: 0x%04x\n" ,((struct ip4_hdr *)(snd_pkt + sizeof(struct ether_hdr)))->hdr_checksum);
+	//printc("YYYYYYYYYYYY_cst: 0x%04x\n" ,((struct tcp_hdr *)(snd_pkt + sizeof(struct ether_hdr) + sizeof(struct ip4_hdr)))->chksum);
+	//printc("YYYYYYYYYYYY_len: 0x%d\n" , p->len);
+	//printc("YYYYYYYYYYYY_len: 0x%d\n" , sizeof(struct ether_hdr));
+	ssl_print_pkt(snd_pkt, (p->len + sizeof(struct ether_hdr)));
 	//printc("packet regenerated\n");
 
-	r = eos_pkt_send(output_ring, curr_pkt, (p->len + sizeof(struct ether_addr)), port);
+	r = eos_pkt_send(output_ring, snd_pkt, len, tx_port);
 	assert(!r);
 	return ERR_OK;
 }
@@ -123,9 +273,6 @@ init_lwip(void)
 	IP4_ADDR(&gw, 10,10,1,1);
 
 	netif_add(&cos_if, &ip, &mask, &gw, NULL, cos_if_init, ip4_input);
-	/*if (IP_DEBUG | LWIP_DBG_LEVEL_WARNING & LWIP_DBG_ON) {
-		printc("^^^^^^^^^\n");
-	}*/
 	netif_set_default(&cos_if);
 	netif_set_up(&cos_if);
 	netif_set_link_up(&cos_if);
@@ -145,7 +292,6 @@ eos_create_tcp_connection()
 	struct ip4_addr ipa = *(struct ip4_addr*)&ip;
 	ret = tcp_bind(tp, &ipa, port);
 	assert(ret == ERR_OK);
-	//tcp_sent(tp, eos_lwip_tcp_recv);
 
 	//printc("|||||: %d\n", tp->state);
 	assert(tp != NULL);
@@ -171,9 +317,9 @@ cos_net_interrupt(int len, void * pkt)
 	p = pbuf_alloc(PBUF_IP, (len-sizeof(struct ether_hdr)), PBUF_ROM);
 	assert(p);
 	p->payload = pl;
-	//printc("????????: %d\n", ((struct ip4_hdr *)pl)->dst_addr);
-	//if (cos_if.input(p, &cos_if) != ERR_OK) {
-		//printc("failed in ip_input: %d\n", cos_if.input(p, &cos_if));
+	//printc("{{{{{%d}}}}\n", len);
+	if (cos_if.input(p, &cos_if) != ERR_OK) {
+		//printc("failed in ip_input: %d");
 		pbuf_free(p);
 	}
 	return;
@@ -187,7 +333,7 @@ init(void)
 }
 
 void *
-ssl_get_packet(int *len, int *port)
+ssl_get_packet(int *len, u16_t *port)
 {
 	int err, r = 0;
 	void *pkt;
@@ -199,26 +345,34 @@ ssl_get_packet(int *len, int *port)
 		else if (err == -ECOLLET) eos_pkt_collect(input_ring, output_ring);
 		pkt = eos_pkt_recv(input_ring, len, port, &err, output_ring);
 	}
+	if (unlikely(!eth_copy)) {
+		struct ether_hdr *eth_hdr = (struct ether_hdr *)pkt;
+		eth_copy = 1;
+		ether_addr_copy(&eth_hdr->src_addr, &eth_dst);
+		ether_addr_copy(&eth_hdr->dst_addr, &eth_src);
+	}
 	return pkt;
 }
 
 static void
 ssl_server_run() {
-	int len, port, r;
+	int len, r;
 	void *pkt;
 	
 	while(1) {
-		pkt = ssl_get_packet(&len, &port);
-
-		//printc("YYYYYYYYYYYY_src: %d\n" ,((struct ip4_hdr *)(pkt + sizeof(struct ether_hdr)))->src_addr);
-		//printc("YYYYYYYYYYYY_dst: %d\n" ,((struct ip4_hdr *)(pkt + sizeof(struct ether_hdr)))->dst_addr);
-		
+		pkt = ssl_get_packet(&len, &tx_port);
 		assert(pkt);
-		curr_pkt = pkt;
 		assert(len <= EOS_PKT_MAX_SZ);
-		//printc("in ssl server\n %s", pkt);
+		if (input_ring->cached.idx == 1) {
+			output_ring->cached.cnt = EOS_PKT_PER_ENTRY;
+		}
 		cos_net_interrupt(len, pkt);
 		assert(len < EOS_PKT_MAX_SZ);
+		if (input_ring->cached.idx == input_ring->cached.cnt) {
+			/* the end of this batch */
+			output_ring->cached.cnt = output_ring->cached.idx;
+			eos_pkt_send_flush(output_ring);
+		}
 		printc("------------------------------\n\n");
 		// application function.
 	}
