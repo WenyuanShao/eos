@@ -244,7 +244,7 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 	//printc("YYYYYYYYYYYY_cst: 0x%04x\n" ,((struct tcp_hdr *)(snd_pkt + sizeof(struct ether_hdr) + sizeof(struct ip4_hdr)))->chksum);
 	//printc("YYYYYYYYYYYY_len: 0x%d\n" , p->len);
 	//printc("YYYYYYYYYYYY_len: 0x%d\n" , sizeof(struct ether_hdr));
-	ssl_print_pkt(snd_pkt, (p->len + sizeof(struct ether_hdr)));
+	//ssl_print_pkt(snd_pkt, (p->len + sizeof(struct ether_hdr)));
 	//printc("packet regenerated\n");
 
 	r = eos_pkt_send(output_ring, snd_pkt, len, tx_port);
