@@ -163,11 +163,16 @@ ninf_tx_process(struct eos_ring *nf_ring)
 		if (unlikely(sent->state != PKT_SENT_READY)) break ;
 		
 		scache = *sent;
-		assert(scache.cnt);
+		//assert(scache.cnt);
 		for(i=0; i<scache.cnt; i++) {
 			ninf_tx_add_pkt(nf_ring, (struct eos_ring_node *)sent, &(scache.pkts[i]));
 		}
-		sent->state = PKT_TXING;
+
+		if (scache.cnt != 0)
+			sent->state = PKT_TXING;
+		else
+			sent->state = PKT_SENT_DONE;
+
 		nf_ring->mca_head++;
 		ret++;
 	}

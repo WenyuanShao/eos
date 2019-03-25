@@ -360,6 +360,7 @@ ssl_server_run() {
 	void *pkt;
 	
 	while(1) {
+		//printc("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
 		pkt = ssl_get_packet(&len, &tx_port);
 		assert(pkt);
 		assert(len <= EOS_PKT_MAX_SZ);
@@ -371,9 +372,9 @@ ssl_server_run() {
 		if (input_ring->cached.idx == input_ring->cached.cnt) {
 			/* the end of this batch */
 			output_ring->cached.cnt = output_ring->cached.idx;
-			eos_pkt_send_flush(output_ring);
+			eos_pkt_send_flush_force(output_ring);
 		}
-		printc("------------------------------\n\n");
+		//printc("------------------------------\n\n");
 		// application function.
 	}
 }
