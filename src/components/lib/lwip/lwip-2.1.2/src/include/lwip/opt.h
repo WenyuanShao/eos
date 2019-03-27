@@ -2350,7 +2350,7 @@
  * application buffers to pbufs.
  */
 #if !defined LWIP_CHECKSUM_ON_COPY || defined __DOXYGEN__
-#define LWIP_CHECKSUM_ON_COPY           0
+#define LWIP_CHECKSUM_ON_COPY           1
 #endif
 /**
  * @}

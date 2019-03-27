@@ -312,7 +312,6 @@ ninf_rx_loop()
 			const u16_t nb_rx = rte_eth_rx_burst(port, 0, rx_batch_mbufs, BURST_SIZE);
 			if (likely(nb_rx>0)) {
 				ninf_rx_proc_batch(rx_batch_mbufs, nb_rx, port);
-				printc("package received: %d tot %d\n", nb_rx, tot_rx);
 			}
 			tot_rx += nb_rx;
 		}

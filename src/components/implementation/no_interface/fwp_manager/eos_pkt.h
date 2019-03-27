@@ -45,6 +45,27 @@ eos_pkt_free(struct eos_ring *ring, void *pkt)
 }
 
 static inline int
+eos_pkt_send_flush_force(struct eos_ring *ring)
+{
+	volatile struct eos_ring_node *rn;
+	pkt_states_t state;
+
+	assert(ring->cached.cnt <= EOS_PKT_PER_ENTRY);
+	//if (ring->cached.cnt == 0) return 0;
+	if (ring->cached.idx < ring->cached.cnt) return -ESENT;
+	rn = GET_RING_NODE(ring, ring->tail & EOS_RING_MASK);
+	assert(rn);
+	state = rn->state;
+	if (unlikely(state == PKT_SENT_DONE)) return -ECOLLET;
+	else if (unlikely(state != PKT_EMPTY)) return -EBLOCK;
+	ring->cached.idx = 0;
+	memcpy((void *)rn, &(ring->cached), sizeof(struct eos_ring_node));
+	ring->tail++;
+	ring->cached.cnt = 0;
+	return 0;
+}
+
+static inline int
 eos_pkt_send_flush(struct eos_ring *ring)
 {
 	volatile struct eos_ring_node *rn;
@@ -77,7 +98,6 @@ eos_pkt_send(struct eos_ring *ring, void *pkt, int len, int port)
 		r = eos_pkt_send_flush(ring);
 		if (unlikely(r)) return r;
 	}
-
 	meta          = &(cache->pkts[cache->idx++]);
 	meta->pkt     = pkt;
 	meta->pkt_len = len;

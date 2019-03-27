@@ -7,4 +7,4 @@ make clean
 make init
 make
 cd ../transfer
-./geniso.sh fwp_memcached.sh
+./geniso.sh echo_nf.sh
