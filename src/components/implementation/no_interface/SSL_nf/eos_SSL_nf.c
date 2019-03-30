@@ -8,6 +8,7 @@
 #include <lwip/prot/tcp.h>
 
 #define ETHER_ADDR_LEN 6
+#define EOS_MAX_CONNECTION 10
 static int conf_file_idx = 0;
 static const u16_t port = 0x01BB; // 443
 static u16_t tx_port; // 443
@@ -17,8 +18,7 @@ static vaddr_t shmem_addr;
 static struct eos_ring *input_ring, *output_ring;
 struct ether_addr eth_src, eth_dst;
 static int eth_copy = 0;
-/* static char echo_pkt[EOS_PKT_MAX_SZ]; */
-/* static struct tcp_pcb_listen *lpcb; */
+static int bump_alloc = 0;
 
 struct ip4_hdr {
 	uint8_t  version_ihl;
@@ -47,6 +47,7 @@ struct echoserver_struct {
 	uint8_t state;
 	struct tcp_pcb *tp;
 	struct pbuf *p;
+	int id;
 };
 
 enum echoserver_state {
@@ -55,6 +56,8 @@ enum echoserver_state {
 	ES_RECEIVED,
 	ES_CLOSING
 };
+
+static struct echoserver_struct echo_conn[EOS_MAX_CONNECTION];
 
 static void
 ssl_print_pkt(void * pkt, int len) {
@@ -80,7 +83,8 @@ static void eos_lwip_tcp_close(struct tcp_pcb *tp, struct echoserver_struct *es)
 	tcp_err(tp, NULL);
 
 	if (es != NULL) {
-		free(es);
+		es->p = NULL;
+		//free(es);
 	}
 
 	tcp_close(tp);
@@ -89,30 +93,71 @@ static void eos_lwip_tcp_close(struct tcp_pcb *tp, struct echoserver_struct *es)
 static void
 eos_lwip_tcp_send(struct tcp_pcb *tp, struct echoserver_struct *es)
 {
-	struct pbuf *pbuf;
 	err_t wr_err = ERR_OK;
 
-	while (wr_err == ERR_OK && (es->p != NULL) && (es->p->len <= tcp_sndbuf(tp))) {
-		pbuf = es->p;
-		printc("{\n%s\n}\n", pbuf->payload);
-		wr_err = tcp_write(tp, pbuf->payload, pbuf->len, 1);
-		assert(wr_err == ERR_OK);
-		wr_err = tcp_output(tp);
+	assert(es->p);
+	wr_err = tcp_write(tp, es->p->payload, es->p->len, 1);
+	assert(wr_err == ERR_OK);
+	wr_err = tcp_output(tp);
 
-		if (wr_err == ERR_OK) {
-			u16_t plen;
-			plen = pbuf->len;
-			es->p = pbuf->next;
-			if (es->p != NULL) {
-				pbuf_ref(es->p);
-			}
-		//	printc("{%d}", pbuf->ref);
-			pbuf_free(pbuf);
-			tcp_recved(tp, plen);
-		} else if (wr_err == ERR_MEM){
-			assert(0);
-		} else assert(0);
+	if (wr_err == ERR_OK) {
+		es->p = NULL;
+	} else if (wr_err == ERR_MEM){
+		assert(0);
+	} else {
+		assert(0);
 	}
+}
+
+static int
+eos_lwip_tcp_read(int id, void *buf, int len)
+{
+	int plen;
+	struct echoserver_struct *es;
+
+	es = &echo_conn[id];
+	assert(es);
+	assert(es->p);
+
+	plen = es->p->len;
+	assert(plen <= len);
+	memcpy(buf, es->p->payload, plen);
+	es->p = NULL;
+	return plen;
+}
+
+static int
+eos_lwip_tcp_write(int id, void *buf, int len)
+{
+	struct echoserver_struct *es;
+
+	es = &echo_conn[id];
+	assert(es);
+	err_t wr_err = ERR_OK;
+	assert(es->tp);
+	wr_err = tcp_write(es->tp, buf, len, 1);
+	assert(wr_err == ERR_OK);
+	wr_err = tcp_output(es->tp);
+	assert(wr_err == ERR_OK);
+	return len;
+}
+
+static void *buf[EOS_PKT_MAX_SZ];
+
+static err_t
+eos_echoserver(int id)
+{
+	int len;
+
+	assert(buf);
+	len = eos_lwip_tcp_read(id, &buf, EOS_PKT_MAX_SZ);
+	assert(len > 0);
+
+	// application
+
+	len = eos_lwip_tcp_write(id, &buf, len);
+	assert(len > 0);
+	return ERR_OK;
 }
 
 static err_t
@@ -121,64 +166,54 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 	err_t ret_err;
 	struct echoserver_struct *es;
 
-	es = (struct echoserver_struct *)arg;
+	es = &echo_conn[(int)arg];
+	assert(es);
 	if (p == NULL) {
 		es->state = ES_CLOSING;
 		if (es->p == NULL){
 			eos_lwip_tcp_close(tp, es);
 		} else {
-			eos_lwip_tcp_send(tp, es);
+			assert(0); /* should not take this path */
+			/* eos_lwip_tcp_send(tp, es); */
 		}
 		return ERR_OK;
 	}
 
 	if (err != ERR_OK) {
-		if (p != NULL) {
+		if (es->p) {
 			es->p = NULL;
-			pbuf_free(p);
 		}
 		assert(0);
 		return err;
 	}
 
-	if (es->state == ES_ACCEPTED) {
-		es->state = ES_RECEIVED;
-		es->p = p;
-		/* send back the received data */
-		tcp_recved(tp, p->tot_len);
-		eos_lwip_tcp_send(tp, es);
-
-		return ERR_OK;
-	}
-
-	if (es->state == ES_RECEIVED) {
-		if (es->p == NULL) {
+	switch (es->state) {
+		case ES_ACCEPTED:
+			es->state = ES_RECEIVED;
+			assert(!es->p);
 			es->p = p;
-			/* send back the received data */
 			tcp_recved(tp, p->tot_len);
-			eos_lwip_tcp_send(tp, es);
-		} else {
-			struct pbuf *pchain;
+			eos_echoserver(es->id);
+			return ERR_OK;
 
-			printc("chain\n");
-			pchain = es->p;
-			pbuf_chain(pchain, p);
-
+		case ES_RECEIVED:
+			assert(!es->p);
+			es->p = p;
+			tcp_recved(tp, p->tot_len);
+			eos_echoserver(es->id);
+			return ERR_OK;
+		default:
 			assert(0);
-		}
-		return ERR_OK;
+			tcp_recved(tp, p->tot_len);
+			es->p = NULL;
+			return ERR_OK;
 	}
-	assert(0);
-	tcp_recved(tp, p->tot_len);
-	es->p = NULL;
-	pbuf_free(p);
-	return ERR_OK;
 }
 
 static err_t
 eos_lwip_tcp_sent(void *arg, struct tcp_pcb *tp, u16_t len)
 {
-	struct echoserver_struct *es;
+	/*struct echoserver_struct *es;
 
 	es = (struct echoserver_struct *)arg;
 	if (es->p != NULL) {
@@ -187,7 +222,7 @@ eos_lwip_tcp_sent(void *arg, struct tcp_pcb *tp, u16_t len)
 		if (es->state == ES_CLOSING) {
 			eos_lwip_tcp_close(tp, es);
 		}
-	}
+	}*/
 	return ERR_OK;
 }
 
@@ -197,22 +232,27 @@ eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 	err_t ret_err;
 	struct echoserver_struct *es;
 
-	es = (struct echoserver_struct *)malloc(sizeof(struct echoserver_struct));
-	if (es != NULL) {
-		es->state = ES_ACCEPTED;
-		es->tp = tp;
-		es->p = NULL;
-
-		tcp_arg(tp, es);
-		tcp_err(tp, eos_lwip_tcp_err);
-		tcp_recv(tp, eos_lwip_tcp_recv);
-		tcp_sent(tp, eos_lwip_tcp_sent);
-
-		ret_err = ERR_OK;
-	} else {
-		ret_err = ERR_MEM;
+	//es = (struct echoserver_struct *)malloc(sizeof(struct echoserver_struct));
+	assert(bump_alloc < EOS_MAX_CONNECTION);
+	es = &echo_conn[bump_alloc];
+	if (unlikely(!es)) {
 		assert(0);
+		return ERR_MEM;
 	}
+
+	es->state = ES_ACCEPTED;
+	es->tp = tp;
+	es->p = NULL;
+	es->id = bump_alloc;
+	bump_alloc++;
+
+	tcp_arg(tp, es->id);
+	tcp_err(tp, eos_lwip_tcp_err);
+	tcp_recv(tp, eos_lwip_tcp_recv);
+	tcp_sent(tp, eos_lwip_tcp_sent);
+
+	ret_err = ERR_OK;
+
 	return ret_err;
 }
 
@@ -226,9 +266,7 @@ static err_t
 ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 {
 	void *pl;
-	struct ip4_hdr *iphdr;
 	struct ether_hdr *eth_hdr;
-	struct ip4_hdr *ori_iphdr;
 	void *snd_pkt;
 	int r, len;
 
@@ -236,9 +274,6 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 	len     = sizeof(struct ether_hdr) + p->len;
 	snd_pkt = eos_pkt_allocate(input_ring, len);
 	eth_hdr = (struct ether_hdr*)snd_pkt;
-	iphdr   = (struct ip4_hdr *)pl;
-
-	iphdr = (struct ip4_hdr *)pl;
 
 	/* generate new ether_hdr*/
 	ether_addr_copy(&eth_src, &eth_hdr->src_addr);
@@ -266,7 +301,6 @@ static void
 init_lwip(void)
 {
 	lwip_init();
-	//tcp_mem_free();
 	IP4_ADDR(&ip, 10,10,1,1);
 	IP4_ADDR(&mask, 255,255,255,0);
 	IP4_ADDR(&gw, 10,10,1,1);
@@ -281,7 +315,7 @@ static void
 eos_create_tcp_connection()
 {
 	err_t ret;
-	int queue;
+	int queue = 20;
 	struct tcp_pcb *new_tp, *tp;
 	
 	tp = tcp_new();
@@ -309,19 +343,20 @@ cos_net_interrupt(int len, void * pkt)
 	
 	assert(EOS_PKT_MAX_SZ >= len);
 	pl = malloc(len);
-	//memcpy(echo_pkt, pkt, len);
 	memcpy(pl, pkt, len);
-	//pl = (void *)(echo_pkt + sizeof(struct ether_hdr));
 	pl = (void *)(pl + sizeof(struct ether_hdr));
 	p = pbuf_alloc(PBUF_IP, (len-sizeof(struct ether_hdr)), PBUF_ROM);
 	assert(p);
 	p->payload = pl;
 	if (cos_if.input(p, &cos_if) != ERR_OK) {
 		assert(0);
-		pbuf_free(p);
 	}
 
-	// add assertion which reference == 0
+	assert(p);
+	/* FIXME: its a hack herer */
+	if (p->ref != 0) {
+		pbuf_free(p);
+	}
 
 	return;
 }
@@ -374,7 +409,6 @@ ssl_server_run() {
 			output_ring->cached.cnt = output_ring->cached.idx;
 			eos_pkt_send_flush_force(output_ring);
 		}
-		// application function.
 	}
 }
 
