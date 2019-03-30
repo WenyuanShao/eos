@@ -14,6 +14,9 @@ export CINC_ENV
 
 .PHONY: all sl ps ck
 all: $(LIBS) $(MAND) $(SIMPLE_STKLIB) $(SIMPLE_STKLIB_NF) sl
+	make -C lwip/cos
+	make -C axTLS
+	cp axTLS/_stage/libaxtls.a .
 
 # we have to compile these without dietlibc so that there are not
 # symbol conflicts and this is why we have the %.a here and don't

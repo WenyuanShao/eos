@@ -13,7 +13,6 @@ eos_pkt_allocate(struct eos_ring *ring, int len)
 {
 	struct eos_ring_node *cache;
 	struct pkt_meta *meta;
-
 	assert(len <= EOS_PKT_MAX_SZ);
 	if (ring->cached.cnt == ring->cached.idx) {
 		assert(ring->cached.alloc_idx < EOS_PKT_PER_ENTRY);
@@ -111,7 +110,7 @@ eos_pkt_send(struct eos_ring *ring, void *pkt, int len, int port)
 static inline int
 eos_pkt_recv_slow(struct eos_ring *ring, struct eos_ring *sent)
 {
-	volatile struct eos_ring_node *rn;
+	volatile struct eos_ring_node *rn, *test;
 
 	assert(ring->cached.cnt == ring->cached.idx);
 	while (1) {
@@ -120,16 +119,20 @@ eos_pkt_recv_slow(struct eos_ring *ring, struct eos_ring *sent)
 		ring->tail++;
 	}
 	if (likely(rn->state == PKT_RECV_READY)) {
+		//printc("###########in recv slow: %d, %d\n", ring->tail, ring->head);
 		memcpy(&(ring->cached), (void *)rn, sizeof(struct eos_ring_node));
 		assert(ring->cached.cnt);
 		assert(ring->cached.idx == 0);
 		assert(sent->cached.cnt == 0);
 		assert(sent->cached.idx == 0);
 		memcpy(sent->cached.pkts, ring->cached.pkts, sizeof(ring->cached.pkts));
+		//printc("<<<<<<<< %p, >>>>>>>>>: %p\n", sent->cached.pkts, ring->cached.pkts);
 		ring->cached.alloc_idx = 0;
 		sent->cached.cnt       = ring->cached.cnt;
 		rn->state              = PKT_RECV_DONE;
 		ring->tail++;
+		test = GET_RING_NODE(ring, ring->head & EOS_RING_MASK);
+		//printc("@@@@@@@@@@@in recv slow: %d\n", test->state);
 		/* cos_faa(&(ring->pkt_cnt), -1); */
 		return 0;
 	} else if (rn->state == PKT_RECV_DONE) {
@@ -183,15 +186,19 @@ collect:
 	sn = GET_RING_NODE(sent, sent->head & EOS_RING_MASK);
 	state = rn->state;
 
+	//printc("+++++++++++++: %d, %d, head: %d\n", state, sn->state, recv->head);
 	if (likely((state == PKT_EMPTY || state == PKT_RECV_DONE) && sn->state  == PKT_SENT_DONE)) {
 		memcpy(&scache, (void *)sn, sizeof(struct eos_ring_node));
-
+		//printc("++++++++++++++: %d\n", recv->head);
 		/* debug */
 		struct eos_ring_node rcache;
 		int i;
 		memcpy(&rcache, (void *)rn, sizeof(struct eos_ring_node));
 		assert(recv->head == sent->head);
 		for(i=0; i<EOS_PKT_PER_ENTRY; i++) {
+			if (rcache.pkts[i].pkt != scache.pkts[i].pkt) {
+				printc("@@@: %p, ###: %p, head_r: %d, head_s: %d\n", rcache.pkts[i].pkt, scache.pkts[i].pkt, recv->head, sent->head);
+			}
 			assert(rcache.pkts[i].pkt == scache.pkts[i].pkt);
 		}
 		scache.cnt   = scache.idx = 0;

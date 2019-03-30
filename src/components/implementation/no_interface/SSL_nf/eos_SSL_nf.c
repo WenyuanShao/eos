@@ -17,7 +17,8 @@ static vaddr_t shmem_addr;
 static struct eos_ring *input_ring, *output_ring;
 struct ether_addr eth_src, eth_dst;
 static int eth_copy = 0;
-//static struct tcp_pcb_listen *lpcb;
+/* static char echo_pkt[EOS_PKT_MAX_SZ]; */
+/* static struct tcp_pcb_listen *lpcb; */
 
 struct ip4_hdr {
 	uint8_t  version_ihl;
@@ -68,6 +69,7 @@ ssl_print_pkt(void * pkt, int len) {
 static void
 eos_lwip_tcp_err(void *arg,  err_t err)
 {
+	assert(0);
 	return;
 }
 
@@ -87,21 +89,25 @@ static void eos_lwip_tcp_close(struct tcp_pcb *tp, struct echoserver_struct *es)
 static void
 eos_lwip_tcp_send(struct tcp_pcb *tp, struct echoserver_struct *es)
 {
-	struct pbuf *pchain;
+	struct pbuf *pbuf;
 	err_t wr_err = ERR_OK;
 
 	while (wr_err == ERR_OK && (es->p != NULL) && (es->p->len <= tcp_sndbuf(tp))) {
-		pchain = es->p;
-		wr_err = tcp_write(tp, pchain->payload, pchain->len, 1);
+		pbuf = es->p;
+		printc("{\n%s\n}\n", pbuf->payload);
+		wr_err = tcp_write(tp, pbuf->payload, pbuf->len, 1);
+		assert(wr_err == ERR_OK);
+		wr_err = tcp_output(tp);
 
 		if (wr_err == ERR_OK) {
 			u16_t plen;
-			plen = pchain->len;
-			es->p = pchain->next;
+			plen = pbuf->len;
+			es->p = pbuf->next;
 			if (es->p != NULL) {
 				pbuf_ref(es->p);
 			}
-			pbuf_free(pchain);
+		//	printc("{%d}", pbuf->ref);
+			pbuf_free(pbuf);
 			tcp_recved(tp, plen);
 		} else if (wr_err == ERR_MEM){
 			assert(0);
@@ -131,6 +137,7 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 			es->p = NULL;
 			pbuf_free(p);
 		}
+		assert(0);
 		return err;
 	}
 
@@ -138,6 +145,7 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 		es->state = ES_RECEIVED;
 		es->p = p;
 		/* send back the received data */
+		tcp_recved(tp, p->tot_len);
 		eos_lwip_tcp_send(tp, es);
 
 		return ERR_OK;
@@ -147,15 +155,20 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 		if (es->p == NULL) {
 			es->p = p;
 			/* send back the received data */
+			tcp_recved(tp, p->tot_len);
 			eos_lwip_tcp_send(tp, es);
 		} else {
 			struct pbuf *pchain;
 
+			printc("chain\n");
 			pchain = es->p;
 			pbuf_chain(pchain, p);
+
+			assert(0);
 		}
 		return ERR_OK;
 	}
+	assert(0);
 	tcp_recved(tp, p->tot_len);
 	es->p = NULL;
 	pbuf_free(p);
@@ -198,6 +211,7 @@ eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 		ret_err = ERR_OK;
 	} else {
 		ret_err = ERR_MEM;
+		assert(0);
 	}
 	return ret_err;
 }
@@ -293,15 +307,22 @@ cos_net_interrupt(int len, void * pkt)
 	void *pl;
 	struct pbuf *p;
 	
+	assert(EOS_PKT_MAX_SZ >= len);
 	pl = malloc(len);
+	//memcpy(echo_pkt, pkt, len);
 	memcpy(pl, pkt, len);
+	//pl = (void *)(echo_pkt + sizeof(struct ether_hdr));
 	pl = (void *)(pl + sizeof(struct ether_hdr));
 	p = pbuf_alloc(PBUF_IP, (len-sizeof(struct ether_hdr)), PBUF_ROM);
 	assert(p);
 	p->payload = pl;
 	if (cos_if.input(p, &cos_if) != ERR_OK) {
+		assert(0);
 		pbuf_free(p);
 	}
+
+	// add assertion which reference == 0
+
 	return;
 }
 
