@@ -35,7 +35,7 @@ include ../config/makefile.conf
 
 all:
 ifdef CONFIG_C_SAMPLES
-	$(MAKE) -C c
+#	$(MAKE) -C c
 endif
 ifdef CONFIG_CSHARP_SAMPLES
 	$(MAKE) -C csharp

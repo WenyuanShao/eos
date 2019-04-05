@@ -15,7 +15,7 @@ export CINC_ENV
 .PHONY: all sl ps ck
 all: $(LIBS) $(MAND) $(SIMPLE_STKLIB) $(SIMPLE_STKLIB_NF) sl
 	make -C lwip/cos
-	make -C axTLS
+	make -C axTLS CC=$(MUSLCC)
 	cp axTLS/_stage/libaxtls.a .
 
 # we have to compile these without dietlibc so that there are not
@@ -83,7 +83,7 @@ init: clean distclean musl ck ps all
 	make -C libcxx
 	make -C click
 	make -C lwip/cos
-	make -C axTLS
+	make -C axTLS CC=$(MUSLCC)
 	cp axTLS/_stage/libaxtls.a .
 	cd dpdk && make config T=i686-native-cosapp-gcc && make V=y && cp build/lib/* ../ #&& cp -av build/include/rte_eal.h ../../include/rte_eal.h && cp -av build/include/rte_ring.h ../../include/rte_ring.h
 

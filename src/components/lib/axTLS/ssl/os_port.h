@@ -136,10 +136,14 @@ EXP_FUNC int STDCALL getdomainname(char *buf, int buf_size);
 #include <sys/wait.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <endian.h>
 //#include <asm/byteorder.h>
 
-#define SOCKET_READ(A,B,C)      read(A,B,C)
-#define SOCKET_WRITE(A,B,C)     write(A,B,C)
+extern int eos_lwip_tcp_read(int id, void* buf, int len);
+extern int eos_lwip_tcp_write(int id, void* buf, int len);
+
+#define SOCKET_READ(A,B,C)      eos_lwip_tcp_read(A,B,C)
+#define SOCKET_WRITE(A,B,C)     eos_lwip_tcp_write(A,B,C)
 #define SOCKET_CLOSE(A)         if (A >= 0) close(A)
 #define TTY_FLUSH()
 

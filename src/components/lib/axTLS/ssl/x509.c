@@ -790,6 +790,8 @@ void x509_print(const X509_CTX *cert, CA_CERT_CTX *ca_cert_ctx)
 
     printf("Not Before:\t\t\t%s", ctime(&cert->not_before));
     printf("Not After:\t\t\t%s", ctime(&cert->not_after));
+    //printf("Not Before:\t\t\t%s", ctime(&cert->not_before));
+    //printf("Not After:\t\t\t%s", ctime(&cert->not_after));
     printf("RSA bitsize:\t\t\t%d\n", cert->rsa_ctx->num_octets*8);
     printf("Sig Type:\t\t\t");
     switch (cert->sig_type)

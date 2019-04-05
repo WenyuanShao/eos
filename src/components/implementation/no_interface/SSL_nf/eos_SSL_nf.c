@@ -6,9 +6,13 @@
 #include <lwip/tcp.h>
 #include <lwip/stats.h>
 #include <lwip/prot/tcp.h>
+#include "axhttp.h"
 
 #define ETHER_ADDR_LEN 6
 #define EOS_MAX_CONNECTION 10
+#define EOS_DUMMY_FILE_SIZE 100
+#define EOS_FILE_NUM 1
+
 static int conf_file_idx = 0;
 static const u16_t port = 0x01BB; // 443
 static u16_t tx_port; // 443
@@ -19,6 +23,10 @@ static struct eos_ring *input_ring, *output_ring;
 struct ether_addr eth_src, eth_dst;
 static int eth_copy = 0;
 static int bump_alloc = 0;
+/* SSL structure */
+struct serverstruct *servers;
+struct connstruct *usedconns;
+struct connstruct *freeconns;
 
 struct ip4_hdr {
 	uint8_t  version_ihl;
@@ -47,6 +55,7 @@ struct echoserver_struct {
 	uint8_t state;
 	struct tcp_pcb *tp;
 	struct pbuf *p;
+	int curr;
 	int id;
 };
 
@@ -57,7 +66,14 @@ enum echoserver_state {
 	ES_CLOSING
 };
 
-static struct echoserver_struct echo_conn[EOS_MAX_CONNECTION];
+struct echoserver_struct echo_conn[EOS_MAX_CONNECTION];
+
+struct file {
+	int size;
+	int curr;
+};
+
+struct file dummy_file[EOS_FILE_NUM];
 
 static void
 ssl_print_pkt(void * pkt, int len) {
@@ -67,6 +83,43 @@ ssl_print_pkt(void * pkt, int len) {
 		printc("%02x ", ((uint8_t*)(pkt))[i]);
 	}
 	printc("}\n");
+}
+
+/* init size to the file size, curr to 0 when open is called */
+
+/* reset curr to 0 when close is called */
+
+int
+eos_dummy_read(int filedesc, char* buf, int size)
+{
+	int r = 0;
+	struct file *f;
+
+	f = &dummy_file[filedesc];
+	if (f->curr >= f->size)	return r;
+	r = min(size, f->size - f->curr);
+	memset(buf, '$', r);
+	f->curr += r;
+	return r;
+}
+
+int
+eos_dummy_open(char *filename, int flag)
+{
+	struct file *f;
+	f = &dummy_file[0];
+	f->size = EOS_DUMMY_FILE_SIZE;
+	f->curr = 0;
+	return 0;
+}
+
+int
+eos_dummy_close(int filedesc)
+{
+	struct file *f;
+	f = &dummy_file[filedesc];
+	f->curr = 0;
+	return 0;
 }
 
 static void
@@ -98,7 +151,7 @@ eos_lwip_tcp_send(struct tcp_pcb *tp, struct echoserver_struct *es)
 	assert(es->p);
 	wr_err = tcp_write(tp, es->p->payload, es->p->len, 1);
 	assert(wr_err == ERR_OK);
-	wr_err = tcp_output(tp);
+	//wr_err = tcp_output(tp);
 
 	if (wr_err == ERR_OK) {
 		es->p = NULL;
@@ -109,7 +162,19 @@ eos_lwip_tcp_send(struct tcp_pcb *tp, struct echoserver_struct *es)
 	}
 }
 
-static int
+int
+eos_select(int id)
+{
+	struct echoserver_struct *es;
+
+	es = &echo_conn[id];
+	if (es->p == NULL) {
+		return 0;
+	}
+	return 1;
+}
+
+int
 eos_lwip_tcp_read(int id, void *buf, int len)
 {
 	int plen;
@@ -120,13 +185,17 @@ eos_lwip_tcp_read(int id, void *buf, int len)
 	assert(es->p);
 
 	plen = es->p->len;
-	assert(plen <= len);
-	memcpy(buf, es->p->payload, plen);
-	es->p = NULL;
-	return plen;
+	memcpy(buf, (((char*)es->p->payload) + es->curr), len);
+	es->curr += len;
+	if (es->curr == plen) {
+		es->p = NULL;
+		es->curr = 0;
+	}
+	assert(es->curr <= plen);
+	return len;
 }
 
-static int
+int
 eos_lwip_tcp_write(int id, void *buf, int len)
 {
 	struct echoserver_struct *es;
@@ -139,6 +208,7 @@ eos_lwip_tcp_write(int id, void *buf, int len)
 	assert(wr_err == ERR_OK);
 	wr_err = tcp_output(es->tp);
 	assert(wr_err == ERR_OK);
+
 	return len;
 }
 
@@ -149,7 +219,6 @@ eos_echoserver(int id)
 {
 	int len;
 
-	assert(buf);
 	len = eos_lwip_tcp_read(id, &buf, EOS_PKT_MAX_SZ);
 	assert(len > 0);
 
@@ -159,6 +228,8 @@ eos_echoserver(int id)
 	assert(len > 0);
 	return ERR_OK;
 }
+
+extern int SSL_server(int id);
 
 static err_t
 eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
@@ -186,21 +257,22 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 		assert(0);
 		return err;
 	}
-
 	switch (es->state) {
 		case ES_ACCEPTED:
 			es->state = ES_RECEIVED;
 			assert(!es->p);
 			es->p = p;
 			tcp_recved(tp, p->tot_len);
-			eos_echoserver(es->id);
+			//eos_echoserver(es->id);
+			SSL_server(es->id);
 			return ERR_OK;
 
 		case ES_RECEIVED:
 			assert(!es->p);
 			es->p = p;
 			tcp_recved(tp, p->tot_len);
-			eos_echoserver(es->id);
+			SSL_server(es->id);
+			//eos_echoserver(es->id);
 			return ERR_OK;
 		default:
 			assert(0);
@@ -226,13 +298,14 @@ eos_lwip_tcp_sent(void *arg, struct tcp_pcb *tp, u16_t len)
 	return ERR_OK;
 }
 
+extern int SSL_conn_new(int id);
+
 static err_t
 eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 {
 	err_t ret_err;
 	struct echoserver_struct *es;
 
-	//es = (struct echoserver_struct *)malloc(sizeof(struct echoserver_struct));
 	assert(bump_alloc < EOS_MAX_CONNECTION);
 	es = &echo_conn[bump_alloc];
 	if (unlikely(!es)) {
@@ -244,12 +317,14 @@ eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 	es->tp = tp;
 	es->p = NULL;
 	es->id = bump_alloc;
+	es->curr = 0;
 	bump_alloc++;
 
 	tcp_arg(tp, es->id);
 	tcp_err(tp, eos_lwip_tcp_err);
 	tcp_recv(tp, eos_lwip_tcp_recv);
 	tcp_sent(tp, eos_lwip_tcp_sent);
+	SSL_conn_new(es->id);
 
 	ret_err = ERR_OK;
 
@@ -267,21 +342,28 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 {
 	void *pl;
 	struct ether_hdr *eth_hdr;
-	void *snd_pkt;
+	char *snd_pkt;
 	int r, len;
+	char *idx = 0;
 
-	pl      = p->payload;
-	len     = sizeof(struct ether_hdr) + p->len;
+	len     = sizeof(struct ether_hdr) + p->tot_len;
 	snd_pkt = eos_pkt_allocate(input_ring, len);
 	eth_hdr = (struct ether_hdr*)snd_pkt;
+	idx     = snd_pkt + sizeof(struct ether_hdr);
 
 	/* generate new ether_hdr*/
 	ether_addr_copy(&eth_src, &eth_hdr->src_addr);
 	ether_addr_copy(&eth_dst, &eth_hdr->dst_addr);
 
-	memcpy((snd_pkt + sizeof(struct ether_hdr)), pl, p->len);
+	while(p) {
+		pl = p->payload;
+		memcpy(idx, pl, p->len);
 
-	r = eos_pkt_send(output_ring, snd_pkt, len, tx_port);
+		//assert(p->type != PBUF_POOL);
+		idx = idx + p->len;
+		p = p->next;
+	}
+	r = eos_pkt_send(output_ring, (void *)snd_pkt, len, tx_port);
 	assert(!r);
 	return ERR_OK;
 }
@@ -297,6 +379,8 @@ cos_if_init(struct netif *ni)
 	return ERR_OK;
 }
 
+extern int SSL_init(void);
+
 static void
 init_lwip(void)
 {
@@ -309,6 +393,8 @@ init_lwip(void)
 	netif_set_default(&cos_if);
 	netif_set_up(&cos_if);
 	netif_set_link_up(&cos_if);
+
+	SSL_init();
 }
 
 static void

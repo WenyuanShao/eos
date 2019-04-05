@@ -48,7 +48,7 @@ target:
 	$(MAKE) -C crypto
 	$(MAKE) -C ssl
 ifdef CONFIG_AXHTTPD
-	$(MAKE) -C httpd
+	#$(MAKE) -C httpd
 endif
 ifdef CONFIG_AXTLSWRAP
 	$(MAKE) -C axtlswrap

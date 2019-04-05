@@ -5,7 +5,7 @@
 #include <consts.h>
 #include <cos_types.h>
 
-#define EOS_PKT_MAX_SZ 256 /*the same as Click*/
+#define EOS_PKT_MAX_SZ 1024 /*the same as Click*/
 #define EOS_RING_SIZE 1024 /* 256 */
 #define EOS_PKT_PER_ENTRY 2 /* 8 */
 #define EOS_PKT_COLLECT_MULTIP 1 /* EOS_PKT_PER_ENTRY */
