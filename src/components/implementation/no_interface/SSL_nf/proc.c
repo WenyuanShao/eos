@@ -314,23 +314,25 @@ static void urlencode(const uint8_t *s, char *t)
 }
 
 #endif
-
+static char head_buf[MAXREADLENGTH];
 void procreadhead(struct connstruct *cn) 
 {
-    char buf[MAXREADLENGTH], *tp, *next;
+    char /*buf[MAXREADLENGTH],*/ *tp, *next;
     int rv;
 
-    memset(buf, 0, sizeof(buf));
-    rv = special_read(cn, buf, sizeof(buf)-1);
+    memset(head_buf, 0, sizeof(head_buf));
+    rv = special_read(cn, head_buf, sizeof(head_buf)-1);
     if (rv <= 0) 
-    {
-        if (rv < 0 || !cn->is_ssl) /* really dead? */
+    {	
+		if (rv < 0 || !cn->is_ssl) /* really dead? */ {
+			printf("fail to read: %d, %d\n", rv, cn->is_ssl);
             removeconnection(cn);
+		}
         return;
     }
 
-    buf[rv] = '\0';
-    next = tp = buf;
+    head_buf[rv] = '\0';
+    next = tp = head_buf;
 #ifdef CONFIG_HTTP_HAS_AUTHORIZATION
     cn->authorization[0] = 0;
 #endif
@@ -344,7 +346,7 @@ void procreadhead(struct connstruct *cn)
 #if defined(CONFIG_HTTP_HAS_CGI)
             if (cn->reqtype == TYPE_POST && cn->content_length > 0)
             {
-                if (init_read_post_data(buf, next, cn, rv) == 0)
+                if (init_read_post_data(head_buf, next, cn, rv) == 0)
                     return;
             }
 #endif
@@ -372,6 +374,7 @@ void procreadhead(struct connstruct *cn)
     }
 }
 
+extern int eos_dummy_open(char *filename, int flag);
 /* In this function we assume that the file has been checked for
  * maliciousness (".."s, etc) and has been decoded
  */
@@ -388,66 +391,67 @@ void procsendhead(struct connstruct *cn)
 
     /* are we trying to access a file over the HTTP connection instead of a
      * HTTPS connection? Or is this directory disabled? */
+	//printf("	pesrocsendhead\n");
     if (htaccess_check(cn))      
     {
         send_error(cn, 403);
         return;
     }
 
-#ifdef CONFIG_HTTP_HAS_AUTHORIZATION
-    if (auth_check(cn))     /* see if there is a '.htpasswd' file */
-    {
-#ifdef CONFIG_HTTP_VERBOSE
-        printf("axhttpd: access to %s denied\n", cn->filereq); TTY_FLUSH();
-#endif
-        removeconnection(cn);
-        return;
-    }
-#endif
+//#ifdef CONFIG_HTTP_HAS_AUTHORIZATION
+//    if (auth_check(cn))     /* see if there is a '.htpasswd' file */
+//    {
+//#ifdef CONFIG_HTTP_VERBOSE
+//        printf("axhttpd: access to %s denied\n", cn->filereq); TTY_FLUSH();
+//#endif
+//        removeconnection(cn);
+//        return;
+//    }
+//#endif
 
-    file_exists = stat(cn->actualfile, &stbuf);
+    //file_exists = stat(cn->actualfile, &stbuf);
 
-#if defined(CONFIG_HTTP_HAS_CGI)
-    if (file_exists != -1 && cn->is_cgi)
-    {
-        proccgi(cn);
-        return;
-    }
-#endif
+//#if defined(CONFIG_HTTP_HAS_CGI)
+    //if (file_exists != -1 && cn->is_cgi)
+    //{
+    //    proccgi(cn);
+    //    return;
+    //}
+//#endif
 
     /* look for "index.html"? */
-    if (isdir(cn->actualfile))
-    {
-        char tbuf[MAXREQUESTLENGTH];
-        snprintf(tbuf, MAXREQUESTLENGTH, "%s%s", cn->actualfile, index_file);
+    //if (isdir(cn->actualfile))
+    //{
+    //    char tbuf[MAXREQUESTLENGTH];
+    //    snprintf(tbuf, MAXREQUESTLENGTH, "%s%s", cn->actualfile, index_file);
 
-        if ((file_exists = stat(tbuf, &stbuf)) != -1) 
-            my_strncpy(cn->actualfile, tbuf, MAXREQUESTLENGTH);
-        else
-        {
-#if defined(CONFIG_HTTP_DIRECTORIES)
+    //    if ((file_exists = stat(tbuf, &stbuf)) != -1) 
+    //        my_strncpy(cn->actualfile, tbuf, MAXREQUESTLENGTH);
+    //    else
+    //    {
+//#if defined(CONFIG_HTTP_DIRECTORIES)
             /* If not, we do a directory listing of it */
-            procdirlisting(cn);
-#else
-            send_error(cn, 404);
-#endif
-            return;
-        }
-    }
+    //        procdirlisting(cn);
+//#else
+    //        send_error(cn, 404);
+//#endif
+    //        return;
+    //    }
+    //}
 
-    if (file_exists == -1)
-    {
-        send_error(cn, 404);
-        return;
-    }
+    //if (file_exists == -1)
+    //{
+    //    send_error(cn, 404);
+    //    return;
+    //}
 
 
-    time(&t_time);
-    ptm = gmtime(&t_time);
-    strftime(date, sizeof(date), rfc1123_format, ptm);
+    //time(&t_time);
+    //ptm = gmtime(&t_time);
+    //strftime(date, sizeof(date), rfc1123_format, ptm);
 
     /* has the file been read before? */
-    if (cn->if_modified_since != -1)  
+    /*if (cn->if_modified_since != -1)  
                                        
     {
         ptm = gmtime(&stbuf.st_mtime);
@@ -461,20 +465,21 @@ void procsendhead(struct connstruct *cn)
             cn->state = STATE_WANT_TO_READ_HEAD;
             return;
         }
-    }
+    }*/
 
-    if (cn->reqtype == TYPE_HEAD) 
+    /*if (cn->reqtype == TYPE_HEAD) 
     {
         removeconnection(cn);
         return;
-    } 
-    else 
-    {
+    }*/ 
+    //else 
+    //{
         int flags = O_RDONLY;
 #if defined(WIN32) || defined(CONFIG_PLATFORM_CYGWIN)
         flags |= O_BINARY;
 #endif
-        cn->filedesc = open(cn->actualfile, flags);
+        cn->filedesc = eos_dummy_open(cn->actualfile, flags);
+        //cn->filedesc = 0;
 
         if (cn->filedesc < 0) 
         {
@@ -482,22 +487,22 @@ void procsendhead(struct connstruct *cn)
             return;
         }
 
-        ptm = gmtime(&stbuf.st_mtime);
-        strftime(last_modified, sizeof(last_modified), rfc1123_format, ptm);
-        t_time += CONFIG_HTTP_TIMEOUT;
-        ptm = gmtime(&t_time);
-        strftime(expires, sizeof(expires), rfc1123_format, ptm);
+        //ptm = gmtime(&stbuf.st_mtime);
+        //strftime(last_modified, sizeof(last_modified), rfc1123_format, ptm);
+        //t_time += CONFIG_HTTP_TIMEOUT;
+        //ptm = gmtime(&t_time);
+        //strftime(expires, sizeof(expires), rfc1123_format, ptm);
 
+		/* FIXME: this is an ugly hack and needs to be fixed */
         snprintf(buf, sizeof(buf), HTTP_VERSION" 200 OK\nServer: %s\n"
 			"Connection: Keep-Alive\n"
-            "Content-Type: %s\nContent-Length: %ld\n"
-            "Date: %s\nLast-Modified: %s\nExpires: %s\n\n", server_version,
-            getmimetype(cn->actualfile), (long) stbuf.st_size,
-            date, last_modified, expires); 
+            "Content-Type: text/html\nContent-Length: 100\n"
+            "Date: Wed, 03 Apr 2019 21:33:51 GMT\nLast-Modified: Wed, 03 Apr 2019 21:33:18 GMT\nExpires: Wed, 03 Apr 2019 21:38:51 GMT\n\n", server_version
+            /*getmimetype(cn->actualfile), (long) stbuf.st_size,*/
+            /*date, last_modified, expires*/);
         special_write(cn, buf, strlen(buf));
 
 #ifdef CONFIG_HTTP_VERBOSE
-        //printf("axhttpd: %s:/%s\n", cn->is_ssl ? "https" : "http", cn->filereq);
         TTY_FLUSH();
 #endif
 
@@ -516,16 +521,19 @@ void procsendhead(struct connstruct *cn)
 #else
         cn->state = STATE_WANT_TO_READ_FILE;
 #endif
-    }
+    //}
 }
+
+extern int eos_dummy_read(int filedesc, char* buf, int size);
+extern int eos_dummy_close(int filedesc);
 
 void procreadfile(struct connstruct *cn) 
 {
-    int rv = read(cn->filedesc, cn->databuf, BLOCKSIZE);
+    int rv = eos_dummy_read(cn->filedesc, cn->databuf, BLOCKSIZE);
 
     if (rv <= 0) 
     {
-        close(cn->filedesc);
+        eos_dummy_close(cn->filedesc);
         cn->filedesc = -1;
         if (cn->close_when_done)        /* close immediately */
             removeconnection(cn);
@@ -1236,7 +1244,6 @@ static int special_write(struct connstruct *cn,
 static int special_read(struct connstruct *cn, void *buf, size_t count)
 {
     int res;
-
     if (cn->is_ssl)
     {
         uint8_t *read_buf;

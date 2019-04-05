@@ -35,23 +35,26 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <llprint.h>
 
 #if !defined(WIN32)
 #include <pwd.h>
 #endif
 #include "axhttp.h"
 
-struct serverstruct *servers;
-struct connstruct *usedconns;
-struct connstruct *freeconns;
+//struct serverstruct *servers;
+//struct connstruct *usedconns;
+//struct connstruct *freeconns;
 const char * const server_version = "axhttpd/"AXTLS_VERSION;
 static const char *webroot = CONFIG_HTTP_WEBROOT;
 
 static void addtoservers(int sd);
 static int openlistener(char *address, int port);
-static void handlenewconnection(int listenfd, int is_ssl);
+static void handlenewconnection(int listenfd, int is_ssl, int id);
 static void addconnection(int sd, char *ip, int is_ssl);
 static void ax_chdir(void);
+
+#define printf printc
 
 #if defined(CONFIG_HTTP_HAS_CGI)
 struct cgiextstruct *cgiexts;
@@ -117,46 +120,45 @@ static void die(int sigtype)
 }
 #endif
 
-int main(int argc, char *argv[]) 
+void SSL_init(int id) 
 {
-    fd_set rfds, wfds;
-    struct connstruct *tp, *to;
-	struct timeval start, end;
-    struct serverstruct *sp;
-    int rnum, wnum, active;
+    //fd_set rfds, wfds;
+    //struct connstruct *tp, *to;
+	struct connstruct *tp;
+	//struct timeval start, end;
+    //int rnum, wnum, active;
     int i = 1;
-    time_t currtime;
-    char *httpAddress = NULL;
-    int httpPort = CONFIG_HTTP_PORT;
-    char *httpsAddress = NULL;
-    int httpsPort = CONFIG_HTTP_HTTPS_PORT;
+    //char *httpAddress = NULL;
+    //int httpPort = CONFIG_HTTP_PORT;
+    //char *httpsAddress = NULL;
+    //int httpsPort = CONFIG_HTTP_HTTPS_PORT;
     uint32_t options = CONFIG_HTTP_DEFAULT_SSL_OPTIONS;
-    char *portStr;
+    //char *portStr;
     char *private_key = NULL;
     char *cert = NULL;
 
-#ifdef WIN32
-    WORD wVersionRequested = MAKEWORD(2, 2);
-    WSADATA wsaData;
-    WSAStartup(wVersionRequested,&wsaData);
-#else
-    signal(SIGPIPE, SIG_IGN);
-#if defined(CONFIG_HTTP_HAS_CGI)
-    signal(SIGCHLD, reaper);
-#endif
-#ifdef CONFIG_HTTP_VERBOSE
-    signal(SIGQUIT, die);
-#endif
-#endif
+//#ifdef WIN32
+//    WORD wVersionRequested = MAKEWORD(2, 2);
+//    WSADATA wsaData;
+//    WSAStartup(wVersionRequested,&wsaData);
+//#else
+//    signal(SIGPIPE, SIG_IGN);
+//#if defined(CONFIG_HTTP_HAS_CGI)
+//    signal(SIGCHLD, reaper);
+//#endif
+//#ifdef CONFIG_HTTP_VERBOSE
+//    signal(SIGQUIT, die);
+//#endif
+//#endif
 
-#ifdef CONFIG_HTTP_VERBOSE
-    signal(SIGTERM, die);
-    signal(SIGINT, sigint_cleanup);
-#endif
+//#ifdef CONFIG_HTTP_VERBOSE
+//    signal(SIGTERM, die);
+//    signal(SIGINT, sigint_cleanup);
+//#endif
     tdate_init();
 
     /* get some command-line parameters */
-    while (argv[i] != NULL)
+/*    while (argv[i] != NULL)
     {
         if (strcmp(argv[i], "-p") == 0 && argv[i+1] != NULL)
         {
@@ -216,7 +218,7 @@ int main(int argc, char *argv[])
                "    [-w webroot]\n", argv[0]);
         exit(1);
     }
-
+*/
     for (i = 0; i < INITIAL_CONNECTION_SLOTS; i++) 
     {
         tp = freeconns;
@@ -224,26 +226,26 @@ int main(int argc, char *argv[])
         freeconns->next = tp;
     }
 
-    if ((active = openlistener(httpAddress, httpPort)) == -1) 
-    {
-#ifdef CONFIG_HTTP_VERBOSE
-        fprintf(stderr, "ERR: Couldn't bind to port %d\n", httpPort);
-#endif
-        exit(1);
-    }
+//    if ((active = openlistener(httpAddress, httpPort)) == -1) 
+//    {
+//#ifdef CONFIG_HTTP_VERBOSE
+//        fprintf(stderr, "ERR: Couldn't bind to port %d\n", httpPort);
+//#endif
+//        exit(1);
+//    }
+	
+	// since there is only one server, so hard code the filedesc to 0;
+    addtoservers(0);
 
-    addtoservers(active);
+//    if ((active = openlistener(httpsAddress, httpsPort)) == -1) 
+//    {
+//#ifdef CONFIG_HTTP_VERBOSE
+//        fprintf(stderr, "ERR: Couldn't bind to port %d\n", httpsPort);
+//#endif
+//        exit(1);
+//    }
 
-    if ((active = openlistener(httpsAddress, httpsPort)) == -1) 
-    {
-#ifdef CONFIG_HTTP_VERBOSE
-        fprintf(stderr, "ERR: Couldn't bind to port %d\n", httpsPort);
-#endif
-        exit(1);
-    }
-
-    addtoservers(active);
-	//printf("==============: %d\n", active);
+//    addtoservers(active);
 
     if (cert != NULL && private_key != NULL)
         options |=  SSL_NO_DEFAULT_KEY;
@@ -281,8 +283,8 @@ int main(int argc, char *argv[])
 #if defined(CONFIG_HTTP_HAS_CGI)
     printf("addcgiext %s\n", CONFIG_HTTP_CGI_EXTENSIONS); 
 #endif
-    printf("%s: listening on ports %d (http) and %d (https)\n", 
-            server_version, httpPort, httpsPort);
+    //printf("%s: listening on ports %d (http) and %d (https)\n", 
+    //        server_version, httpPort, httpsPort);
     TTY_FLUSH();
 #endif
 
@@ -308,52 +310,79 @@ int main(int argc, char *argv[])
 
     }
 #endif
+//#ifndef WIN32 
+//#ifdef CONFIG_HTTP_IS_DAEMON
+//    if (fork() > 0)  /* parent will die */
+//        exit(0);
 
-#ifndef WIN32 
-#ifdef CONFIG_HTTP_IS_DAEMON
-    if (fork() > 0)  /* parent will die */
-        exit(0);
+//    setsid();
+//#endif
+//#endif
+}
 
-    setsid();
-#endif
-#endif
+void SSL_conn_new(int id)
+{
+    struct serverstruct *sp;
+
+	sp = servers;
+    while (/* active > 0 && */sp != NULL) 
+    {
+		//if (FD_ISSET(sp->sd, &rfds)) 
+        //{
+        handlenewconnection(sp->sd, sp->is_ssl, id);
+			//printf("new connection: %d\n", active);
+            //active--;
+        //}
+
+        sp = sp->next;
+    }
+
+}
+
+extern int eos_select(int id);
+
+int SSL_server(int id) 
+{
+    //struct serverstruct *sp;
+    struct connstruct *tp, *to;
+    time_t currtime;
+	//int ret = 1;
 
     /* main loop */
-    while (1)
+    while (eos_select(id))
     {
-        struct timeval tv = { 10, 0 };
-        FD_ZERO(&rfds);
-        FD_ZERO(&wfds);
-        rnum = wnum = -1;
-        sp = servers;
+        //struct timeval tv = { 10, 0 };
+        //FD_ZERO(&rfds);
+        //FD_ZERO(&wfds);
+        //rnum = wnum = -1;
+        //sp = servers;
 
-		gettimeofday(&start, NULL);
-        while (sp != NULL)  /* read each server port */
-        {
-            FD_SET(sp->sd, &rfds);
+		//gettimeofday(&start, NULL);
+        //while (sp != NULL)  /* read each server port */
+        //{
+        //    FD_SET(sp->sd, &rfds);
 
-            if (sp->sd > rnum) 
-                rnum = sp->sd;
-            sp = sp->next;
-        }
+        //    if (sp->sd > rnum) 
+        //        rnum = sp->sd;
+        //    sp = sp->next;
+        //}
 
         /* Add the established sockets */
-        tp = usedconns;
-        currtime = time(NULL);
+		//tp = usedconns;
+        //currtime = time(NULL);
 
-        while (tp != NULL) 
-        {
-            if (currtime > tp->timeout)     /* timed out? Kill it. */
-            {
-				to = tp;
-                tp = tp->next;
-                removeconnection(to);
-                continue;
-            }
+        //while (tp != NULL) 
+        //{
+            //if (currtime > tp->timeout)     /* timed out? Kill it. */
+            //{
+			//	to = tp;
+             //   tp = tp->next;
+                //removeconnection(to);
+            //    continue;
+            //}
 
-            if (tp->state == STATE_WANT_TO_READ_HEAD) 
+            /*if (tp->state == STATE_WANT_TO_READ_HEAD) 
             {
-				//printf("111:  ");
                 FD_SET(tp->networkdesc, &rfds);
                 if (tp->networkdesc > rnum) 
                     rnum = tp->networkdesc;
@@ -361,7 +390,6 @@ int main(int argc, char *argv[])
 
             if (tp->state == STATE_WANT_TO_SEND_HEAD) 
             {
-				//printf("222:  ");
                 FD_SET(tp->networkdesc, &wfds);
                 if (tp->networkdesc > wnum) 
                     wnum = tp->networkdesc;
@@ -369,7 +397,6 @@ int main(int argc, char *argv[])
 
             if (tp->state == STATE_WANT_TO_READ_FILE) 
             {
-				//printf("333:  ");
                 FD_SET(tp->filedesc, &rfds);
                 if (tp->filedesc > rnum) 
                     rnum = tp->filedesc;
@@ -377,7 +404,6 @@ int main(int argc, char *argv[])
 
             if (tp->state == STATE_WANT_TO_SEND_FILE) 
             {
-				//printf("444:  ");
                 FD_SET(tp->networkdesc, &wfds);
                 if (tp->networkdesc > wnum) 
                     wnum = tp->networkdesc;
@@ -386,88 +412,83 @@ int main(int argc, char *argv[])
 #if defined(CONFIG_HTTP_DIRECTORIES)
             if (tp->state == STATE_DOING_DIR) 
             {
-				//printf("555:  ");
                 FD_SET(tp->networkdesc, &wfds);
                 if (tp->networkdesc > wnum) 
                     wnum = tp->networkdesc;
             }
-#endif
-            tp = tp->next;
-        }
-
+#endif*/
+          //  tp = tp->next;
+        //}
+/*
         active = select(wnum > rnum ? wnum+1 : rnum+1,
                 rnum != -1 ? &rfds : NULL, 
                 wnum != -1 ? &wfds : NULL,
-                NULL, usedconns ? &tv : NULL);
+                NULL, usedconns ? &tv : NULL);*/
         /* timeout? */
-        if (active == 0)
+        /*if (active == 0)
             continue;
-
+*/
         /* New connection? */
-        sp = servers;
-        while (active > 0 && sp != NULL) 
-        {
-			if (FD_ISSET(sp->sd, &rfds)) 
-            {
-                handlenewconnection(sp->sd, sp->is_ssl);
+        //sp = servers;
+        //while (active > 0 && sp != NULL) 
+        //{
+			//if (FD_ISSET(sp->sd, &rfds)) 
+            //{
+        //        handlenewconnection(sp->sd, sp->is_ssl);
 				//printf("new connection: %d\n", active);
-                active--;
-            }
+        //        active--;
+            //}
 
-            sp = sp->next;
-        }
+        //    sp = sp->next;
+        //}
         /* Handle the established sockets */
         tp = usedconns;
 
-        while (active > 0 && tp != NULL) 
+        while (/*active > 0 && */tp != NULL) 
         {
-
+			
             to = tp;
             tp = tp->next;
-
-            if (to->state == STATE_WANT_TO_READ_HEAD &&
-                        FD_ISSET(to->networkdesc, &rfds)) 
+            if (to->state == STATE_WANT_TO_READ_HEAD /*&&
+                        FD_ISSET(to->networkdesc, &rfds)*/) 
             {
-				//printf("a: %d !!!!: ", to->post_state);
-                active--;
+                //active--;
 #if defined(CONFIG_HTTP_HAS_CGI)
                 if (to->post_state)
                     read_post_data(to);
-                else
+                else {
 #endif
-                    procreadhead(to);
+					procreadhead(to);
+					
+				}
             } 
 
-            if (to->state == STATE_WANT_TO_SEND_HEAD &&
-                        FD_ISSET(to->networkdesc, &wfds)) 
+            if (to->state == STATE_WANT_TO_SEND_HEAD /*&&
+                        FD_ISSET(to->networkdesc, &wfds)*/) 
             {
-				//printf("b: ");
-                active--;
+                //active--;
                 procsendhead(to);
             } 
 
-            if (to->state == STATE_WANT_TO_READ_FILE && 
-                        FD_ISSET(to->filedesc, &rfds)) 
+            if (to->state == STATE_WANT_TO_READ_FILE /*&& 
+                        FD_ISSET(to->filedesc, &rfds)*/) 
             {
-				//printf("c: ");
-                active--;
+                //active--;
                 procreadfile(to);
             } 
 
-            if (to->state == STATE_WANT_TO_SEND_FILE && 
-                        FD_ISSET(to->networkdesc, &wfds)) 
+            if (to->state == STATE_WANT_TO_SEND_FILE /*&& 
+                        FD_ISSET(to->networkdesc, &wfds)*/) 
             {
-				//printf("d: ");
-                active--;
+                //active--;
                 procsendfile(to);
             }
 
 #if defined(CONFIG_HTTP_DIRECTORIES)
-            if (to->state == STATE_DOING_DIR &&
-                        FD_ISSET(to->networkdesc, &wfds)) 
+            if (to->state == STATE_DOING_DIR /*&&
+                        FD_ISSET(to->networkdesc, &wfds)*/) 
             {
-				//printf("e: ");
-                active--;
+                //active--;
                 procdodir(to);
             }
 #endif
@@ -509,9 +530,9 @@ static void addtoservers(int sd)
 }
 
 #ifdef HAVE_IPV6
-static void handlenewconnection(int listenfd, int is_ssl) 
+static void handlenewconnection(int listenfd, int is_ssl, int id) 
 {
-    struct sockaddr_in6 their_addr;
+    /*struct sockaddr_in6 their_addr;
     socklen_t tp = sizeof(their_addr);
     char ipbuf[100];
     int connfd = accept(listenfd, (struct sockaddr *)&their_addr, &tp);
@@ -524,17 +545,19 @@ static void handlenewconnection(int listenfd, int is_ssl)
     else 
         *ipbuf = '\0';
 
-    if (connfd != -1) /* check for error condition */
-        addconnection(connfd, ipbuf, is_ssl);
+    if (connfd != -1)*/ /* check for error condition */
+        //addconnection(connfd, ipbuf, is_ssl);
+        addconnection(id, NULL, is_ssl);
 }
 
 #else
-static void handlenewconnection(int listenfd, int is_ssl) 
+static void handlenewconnection(int listenfd, int is_ssl, int id)
 {
-    struct sockaddr_in their_addr;
-    socklen_t tp = sizeof(struct sockaddr_in);
-    int connfd = accept(listenfd, (struct sockaddr *)&their_addr, &tp);
-    addconnection(connfd, inet_ntoa(their_addr.sin_addr), is_ssl);
+    //struct sockaddr_in their_addr;
+    //socklen_t tp = sizeof(struct sockaddr_in);
+    //int connfd = accept(listenfd, (struct sockaddr *)&their_addr, &tp);
+    //addconnection(connfd, inet_ntoa(their_addr.sin_addr), is_ssl);
+    addconnection(id, "10.10.1.1", is_ssl);
 }
 #endif
 
@@ -631,7 +654,6 @@ static void addconnection(int sd, char *ip, int is_ssl)
     tp->next = usedconns;
     usedconns = tp;
     tp->networkdesc = sd;
-
     if (is_ssl)
         tp->ssl = ssl_server_new(servers->ssl_ctx, sd);
 
@@ -655,7 +677,9 @@ void removeconnection(struct connstruct *cn)
 {
     struct connstruct *tp;
     int shouldret = 0;
-
+	while (1) {
+		/* something wrong happened */
+	}
     tp = usedconns;
 
     if (tp == NULL || cn == NULL) 
@@ -697,11 +721,11 @@ void removeconnection(struct connstruct *cn)
 #ifndef WIN32
         shutdown(cn->networkdesc, SHUT_WR);
 #endif
-        SOCKET_CLOSE(cn->networkdesc);
+//        SOCKET_CLOSE(cn->networkdesc);
     }
 
-    if (cn->filedesc != -1) 
-        close(cn->filedesc);
+//    if (cn->filedesc != -1) 
+//        close(cn->filedesc);
 
 #if defined(CONFIG_HTTP_HAS_DIRECTORIES)
     if (cn->dirp != NULL) 
