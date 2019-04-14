@@ -5,8 +5,8 @@
 #include "fwp_chain_cache.h"
 #include "eos_sched.h"
 
-#define NO_FLOW_ISOLATION
-//#define PER_FLOW_CHAIN
+//#define NO_FLOW_ISOLATION
+#define PER_FLOW_CHAIN
 /* #define SINGLE_PING_CHURN_TEST */
 /* #define FIXED_NF_CHAIN */
 /* #define DBG_REMOVE_MCA */

@@ -4,7 +4,7 @@ COMPONENT=SSL_nf.o
 INTERFACES=
 DEPENDENCIES=
 IF_LIB=./net_stack.o
-ADDITIONAL_LIBS=-lclick -lcobj_format -lcos_kernel_api $(POSIX_HYPERCALL_LIB) -lcos_defkernel_api -lstdc++ -lsupc++ -laxtls
+ADDITIONAL_LIBS=-lcobj_format -lcos_kernel_api $(POSIX_HYPERCALL_LIB) -lcos_defkernel_api -laxtls
 
 pre: first all
 first:

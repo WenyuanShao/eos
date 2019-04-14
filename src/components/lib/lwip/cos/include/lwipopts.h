@@ -14,7 +14,7 @@
 /* #define MEMP_NUM_PBUF (4096*4) */
 #define MEMP_NUM_UDP_PCB 512
 //#define MEMP_NUM_TCP_PCB 512
-#define MEMP_NUM_TCP_PCB 8192 	/* need a fair amount of these due to timed wait on close  */
+#define MEMP_NUM_TCP_PCB 512 	/* need a fair amount of these due to timed wait on close  */
 #define MEMP_NUM_TCP_PCB_LISTEN 128
 #define LWIP_ARP 0
 #define IP_REASSEMBLY 0
@@ -41,7 +41,7 @@
 //#define TCP_SND_QUEUELEN        (4 * TCP_SND_BUF/TCP_MSS)
 #define TCP_SND_QUEUELEN       4096//(64 * TCP_SND_BUF/TCP_MSS)
 
-#define MEMP_NUM_TCP_SEG 12*4096//(TCP_SND_QUEUELEN*16)
+#define MEMP_NUM_TCP_SEG 2*4096//(TCP_SND_QUEUELEN*16)
 
 /* TCP writable space (bytes). This must be less than or equal
    to TCP_SND_BUF. It is the amount of space which must be
@@ -49,7 +49,7 @@
 #define TCP_SNDLOWAT		(TCP_SND_BUF/2)
 
 /* TCP receive window. */
-#define TCP_WND                 (8096*2)
+#define TCP_WND                 8096
 
 /* Maximum number of retransmissions of data segments. */
 #define TCP_MAXRTX              12

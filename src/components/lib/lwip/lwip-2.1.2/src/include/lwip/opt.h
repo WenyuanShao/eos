@@ -579,7 +579,7 @@
  * PBUF_POOL_SIZE: the number of buffers in the pbuf pool.
  */
 #if !defined PBUF_POOL_SIZE || defined __DOXYGEN__
-#define PBUF_POOL_SIZE                  16
+#define PBUF_POOL_SIZE                  8
 #endif
 
 /** MEMP_NUM_API_MSG: the number of concurrently active calls to various
@@ -1177,7 +1177,7 @@
  * LWIP_UDP==1: Turn on UDP.
  */
 #if !defined LWIP_UDP || defined __DOXYGEN__
-#define LWIP_UDP                        1
+#define LWIP_UDP                        0
 #endif
 
 /**

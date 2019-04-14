@@ -219,12 +219,12 @@ eos_echoserver(int id)
 {
 	int len;
 
-	len = eos_lwip_tcp_read(id, &buf, EOS_PKT_MAX_SZ);
+	len = eos_lwip_tcp_read(id, buf, EOS_PKT_MAX_SZ);
 	assert(len > 0);
 
 	// application
 
-	len = eos_lwip_tcp_write(id, &buf, len);
+	len = eos_lwip_tcp_write(id, buf, len);
 	assert(len > 0);
 	return ERR_OK;
 }
@@ -385,9 +385,9 @@ static void
 init_lwip(void)
 {
 	lwip_init();
-	IP4_ADDR(&ip, 10,10,1,1);
+	IP4_ADDR(&ip, 10,10,1,2);
 	IP4_ADDR(&mask, 255,255,255,0);
-	IP4_ADDR(&gw, 10,10,1,1);
+	IP4_ADDR(&gw, 10,10,1,2);
 
 	netif_add(&cos_if, &ip, &mask, &gw, NULL, cos_if_init, ip4_input);
 	netif_set_default(&cos_if);
@@ -421,6 +421,8 @@ eos_create_tcp_connection()
 	tcp_accept(new_tp, eos_lwip_tcp_accept);
 }
 
+static char curr_pkt[EOS_PKT_MAX_SZ];
+
 static void
 cos_net_interrupt(int len, void * pkt)
 {
@@ -428,8 +430,10 @@ cos_net_interrupt(int len, void * pkt)
 	struct pbuf *p;
 	
 	assert(EOS_PKT_MAX_SZ >= len);
-	pl = malloc(len);
-	memcpy(pl, pkt, len);
+	//pl = malloc(len);
+	//pl = curr_pkt;
+	//memcpy(pl, pkt, len);
+	pl = pkt;
 	pl = (void *)(pl + sizeof(struct ether_hdr));
 	p = pbuf_alloc(PBUF_IP, (len-sizeof(struct ether_hdr)), PBUF_ROM);
 	assert(p);

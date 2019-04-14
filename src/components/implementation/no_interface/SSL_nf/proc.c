@@ -40,6 +40,7 @@
 #include <sys/time.h>
 
 #define HTTP_VERSION        "HTTP/1.1"
+#define SSL_FILE_LEN        0
 
 static const char * index_file = "index.html";
 static const char * rfc1123_format = "%a, %d %b %Y %H:%M:%S GMT";
@@ -496,9 +497,10 @@ void procsendhead(struct connstruct *cn)
 		/* FIXME: this is an ugly hack and needs to be fixed */
         snprintf(buf, sizeof(buf), HTTP_VERSION" 200 OK\nServer: %s\n"
 			"Connection: Keep-Alive\n"
-            "Content-Type: text/html\nContent-Length: 100\n"
+            "Content-Type: text/html\nContent-Length: %ld\n"
             "Date: Wed, 03 Apr 2019 21:33:51 GMT\nLast-Modified: Wed, 03 Apr 2019 21:33:18 GMT\nExpires: Wed, 03 Apr 2019 21:38:51 GMT\n\n", server_version
             /*getmimetype(cn->actualfile), (long) stbuf.st_size,*/
+            , SSL_FILE_LEN
             /*date, last_modified, expires*/);
         special_write(cn, buf, strlen(buf));
 

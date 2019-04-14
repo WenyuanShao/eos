@@ -42,6 +42,8 @@
 #endif
 #include "axhttp.h"
 
+#define IP_ADDR "10.10.1.2"
+
 //struct serverstruct *servers;
 //struct connstruct *usedconns;
 //struct connstruct *freeconns;
@@ -557,7 +559,7 @@ static void handlenewconnection(int listenfd, int is_ssl, int id)
     //socklen_t tp = sizeof(struct sockaddr_in);
     //int connfd = accept(listenfd, (struct sockaddr *)&their_addr, &tp);
     //addconnection(connfd, inet_ntoa(their_addr.sin_addr), is_ssl);
-    addconnection(id, "10.10.1.1", is_ssl);
+    addconnection(id, IP_ADDR, is_ssl);
 }
 #endif
 
