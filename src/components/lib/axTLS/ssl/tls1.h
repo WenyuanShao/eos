@@ -80,7 +80,7 @@ extern "C" {
 #define RT_EXTRA                    1024
 #define BM_RECORD_OFFSET            5
 
-#define NUM_PROTOCOLS               4
+#define NUM_PROTOCOLS               1
 
 #define MAX_SIG_ALGORITHMS          4
 #define SIG_ALG_SHA1                2

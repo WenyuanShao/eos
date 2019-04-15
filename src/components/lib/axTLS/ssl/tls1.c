@@ -64,13 +64,14 @@ static void session_free(SSL_SESSION *ssl_sessions[], int sess_index);
 #endif
 
 const uint8_t ssl_prot_prefs[NUM_PROTOCOLS] = 
-#ifdef CONFIG_SSL_PROT_LOW                  /* low security, fast speed */
-{ SSL_AES128_SHA, SSL_AES128_SHA256, SSL_AES256_SHA, SSL_AES256_SHA256 };
-#elif CONFIG_SSL_PROT_MEDIUM                /* medium security, medium speed */
-{ SSL_AES128_SHA256, SSL_AES256_SHA256, SSL_AES256_SHA, SSL_AES128_SHA };    
-#else /* CONFIG_SSL_PROT_HIGH */            /* high security, low speed */
-{ SSL_AES256_SHA256, SSL_AES128_SHA256, SSL_AES256_SHA, SSL_AES128_SHA };
-#endif
+  {SSL_AES128_SHA};
+/* #ifdef CONFIG_SSL_PROT_LOW                  /\* low security, fast speed *\/ */
+/* { SSL_AES128_SHA, SSL_AES128_SHA256, SSL_AES256_SHA, SSL_AES256_SHA256 }; */
+/* #elif CONFIG_SSL_PROT_MEDIUM                /\* medium security, medium speed *\/ */
+/* { SSL_AES128_SHA256, SSL_AES256_SHA256, SSL_AES256_SHA, SSL_AES128_SHA };     */
+/* #else /\* CONFIG_SSL_PROT_HIGH *\/            /\* high security, low speed *\/ */
+/* { SSL_AES256_SHA256, SSL_AES128_SHA256, SSL_AES256_SHA, SSL_AES128_SHA }; */
+/* #endif */
 
 /**
  * The cipher map containing all the essentials for each cipher.
@@ -87,39 +88,39 @@ static const cipher_info_t cipher_info[NUM_PROTOCOLS] =
         hmac_sha1,                      /* hmac algorithm */
         (crypt_func)AES_cbc_encrypt,    /* encrypt */
         (crypt_func)AES_cbc_decrypt     /* decrypt */
-    },
-    {   /* AES256-SHA */
-        SSL_AES256_SHA,                 /* AES256-SHA */
-        32,                             /* key size */
-        16,                             /* iv size */ 
-        16,                             /* block padding size */
-        SHA1_SIZE,                      /* digest size */
-        2*(SHA1_SIZE+32+16),            /* key block size */
-        hmac_sha1,                      /* hmac algorithm */
-        (crypt_func)AES_cbc_encrypt,    /* encrypt */
-        (crypt_func)AES_cbc_decrypt     /* decrypt */
-    },       
-    {   /* AES128-SHA256 */
-        SSL_AES128_SHA256,              /* AES128-SHA256 */
-        16,                             /* key size */
-        16,                             /* iv size */ 
-        16,                             /* block padding size */
-        SHA256_SIZE,                    /* digest size */
-        2*(SHA256_SIZE+32+16),          /* key block size */
-        hmac_sha256,                    /* hmac algorithm */
-        (crypt_func)AES_cbc_encrypt,    /* encrypt */
-        (crypt_func)AES_cbc_decrypt     /* decrypt */
-    },       
-    {   /* AES256-SHA256 */
-        SSL_AES256_SHA256,              /* AES256-SHA256 */
-        32,                             /* key size */
-        16,                             /* iv size */ 
-        16,                             /* block padding size */
-        SHA256_SIZE,                    /* digest size */
-        2*(SHA256_SIZE+32+16),          /* key block size */
-        hmac_sha256,                    /* hmac algorithm */
-        (crypt_func)AES_cbc_encrypt,    /* encrypt */
-        (crypt_func)AES_cbc_decrypt     /* decrypt */
+    /* }, */
+    /* {   /\* AES256-SHA *\/ */
+    /*     SSL_AES256_SHA,                 /\* AES256-SHA *\/ */
+    /*     32,                             /\* key size *\/ */
+    /*     16,                             /\* iv size *\/  */
+    /*     16,                             /\* block padding size *\/ */
+    /*     SHA1_SIZE,                      /\* digest size *\/ */
+    /*     2*(SHA1_SIZE+32+16),            /\* key block size *\/ */
+    /*     hmac_sha1,                      /\* hmac algorithm *\/ */
+    /*     (crypt_func)AES_cbc_encrypt,    /\* encrypt *\/ */
+    /*     (crypt_func)AES_cbc_decrypt     /\* decrypt *\/ */
+    /* },        */
+    /* {   /\* AES128-SHA256 *\/ */
+    /*     SSL_AES128_SHA256,              /\* AES128-SHA256 *\/ */
+    /*     16,                             /\* key size *\/ */
+    /*     16,                             /\* iv size *\/  */
+    /*     16,                             /\* block padding size *\/ */
+    /*     SHA256_SIZE,                    /\* digest size *\/ */
+    /*     2*(SHA256_SIZE+32+16),          /\* key block size *\/ */
+    /*     hmac_sha256,                    /\* hmac algorithm *\/ */
+    /*     (crypt_func)AES_cbc_encrypt,    /\* encrypt *\/ */
+    /*     (crypt_func)AES_cbc_decrypt     /\* decrypt *\/ */
+    /* },        */
+    /* {   /\* AES256-SHA256 *\/ */
+    /*     SSL_AES256_SHA256,              /\* AES256-SHA256 *\/ */
+    /*     32,                             /\* key size *\/ */
+    /*     16,                             /\* iv size *\/  */
+    /*     16,                             /\* block padding size *\/ */
+    /*     SHA256_SIZE,                    /\* digest size *\/ */
+    /*     2*(SHA256_SIZE+32+16),          /\* key block size *\/ */
+    /*     hmac_sha256,                    /\* hmac algorithm *\/ */
+    /*     (crypt_func)AES_cbc_encrypt,    /\* encrypt *\/ */
+    /*     (crypt_func)AES_cbc_decrypt     /\* decrypt *\/ */
     }
 };
 
