@@ -495,13 +495,17 @@ void procsendhead(struct connstruct *cn)
         //strftime(expires, sizeof(expires), rfc1123_format, ptm);
 
 		/* FIXME: this is an ugly hack and needs to be fixed */
-        snprintf(buf, sizeof(buf), HTTP_VERSION" 200 OK\nServer: %s\n"
-			"Connection: Keep-Alive\n"
-            "Content-Type: text/html\nContent-Length: %ld\n"
-            "Date: Wed, 03 Apr 2019 21:33:51 GMT\nLast-Modified: Wed, 03 Apr 2019 21:33:18 GMT\nExpires: Wed, 03 Apr 2019 21:38:51 GMT\n\n", server_version
-            /*getmimetype(cn->actualfile), (long) stbuf.st_size,*/
-            , SSL_FILE_LEN
-            /*date, last_modified, expires*/);
+        snprintf(buf, sizeof(buf), HTTP_VERSION" 200 OK\n"
+            "Content-Length: %ld\n\n"
+            , SSL_FILE_LEN);
+
+        /* snprintf(buf, sizeof(buf), HTTP_VERSION" 200 OK\nServer: %s\n" */
+	/* 		"Connection: Keep-Alive\n" */
+        /*     "Content-Type: text/html\nContent-Length: %ld\n" */
+        /*     "Date: Wed, 03 Apr 2019 21:33:51 GMT\nLast-Modified: Wed, 03 Apr 2019 21:33:18 GMT\nExpires: Wed, 03 Apr 2019 21:38:51 GMT\n\n", server_version */
+        /*     /\*getmimetype(cn->actualfile), (long) stbuf.st_size,*\/ */
+        /*     , SSL_FILE_LEN */
+        /*     /\*date, last_modified, expires*\/); */
         special_write(cn, buf, strlen(buf));
 
 #ifdef CONFIG_HTTP_VERBOSE
