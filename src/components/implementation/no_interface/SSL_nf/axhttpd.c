@@ -461,11 +461,10 @@ int SSL_server(int id)
 #if defined(CONFIG_HTTP_HAS_CGI)
                 if (to->post_state)
                     read_post_data(to);
-                else {
+               else 
 #endif
 					procreadhead(to);
 					
-				}
             } 
 
             if (to->state == STATE_WANT_TO_SEND_HEAD /*&&
