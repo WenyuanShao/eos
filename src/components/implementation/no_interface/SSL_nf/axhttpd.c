@@ -43,6 +43,7 @@
 #include "axhttp.h"
 
 #define IP_ADDR "10.10.1.2"
+//#define ENABLE_HTTPS
 
 //struct serverstruct *servers;
 //struct connstruct *usedconns;
@@ -248,7 +249,9 @@ void SSL_init(int id)
 //    }
 
 //    addtoservers(active);
+    servers->is_ssl = 0;
 
+#ifdef ENABLE_HTTPS
     if (cert != NULL && private_key != NULL)
         options |=  SSL_NO_DEFAULT_KEY;
 
@@ -289,7 +292,7 @@ void SSL_init(int id)
     //        server_version, httpPort, httpsPort);
     TTY_FLUSH();
 #endif
-
+#endif
     ax_chdir();
 
 #ifdef CONFIG_HTTP_ENABLE_DIFFERENT_USER

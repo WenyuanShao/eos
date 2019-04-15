@@ -185,6 +185,7 @@ eos_lwip_tcp_read(int id, void *buf, int len)
 	assert(es->p);
 
 	plen = es->p->len;
+	if (plen - es->curr < len) len = plen - es->curr;
 	memcpy(buf, (((char*)es->p->payload) + es->curr), len);
 	es->curr += len;
 	if (es->curr == plen) {
