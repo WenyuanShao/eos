@@ -213,22 +213,22 @@ eos_lwip_tcp_write(int id, void *buf, int len)
 	return len;
 }
 
-static void *buf[EOS_PKT_MAX_SZ];
+/* static void *buf[EOS_PKT_MAX_SZ]; */
 
-static err_t
-eos_echoserver(int id)
-{
-	int len;
+/* static err_t */
+/* eos_echoserver(int id) */
+/* { */
+/* 	int len; */
 
-	len = eos_lwip_tcp_read(id, buf, EOS_PKT_MAX_SZ);
-	assert(len > 0);
+/* 	len = eos_lwip_tcp_read(id, buf, EOS_PKT_MAX_SZ); */
+/* 	assert(len > 0); */
 
-	// application
+/* 	// application */
 
-	len = eos_lwip_tcp_write(id, buf, len);
-	assert(len > 0);
-	return ERR_OK;
-}
+/* 	len = eos_lwip_tcp_write(id, buf, len); */
+/* 	assert(len > 0); */
+/* 	return ERR_OK; */
+/* } */
 
 extern int SSL_server(int id);
 
@@ -240,47 +240,31 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 
 	es = &echo_conn[(int)arg];
 	assert(es);
-	if (p == NULL) {
+	if (unlikely(p == NULL)) {
 		es->state = ES_CLOSING;
-		if (es->p == NULL){
-			eos_lwip_tcp_close(tp, es);
-		} else {
-			assert(0); /* should not take this path */
-			/* eos_lwip_tcp_send(tp, es); */
-		}
-		return ERR_OK;
-	}
+		assert(es->p == NULL);
+		eos_lwip_tcp_close(tp, es);
+	} else {
+	  assert(err == ERR_OK);
+	  switch (es->state) {
+	  case ES_ACCEPTED:
+	    es->state = ES_RECEIVED;
 
-	if (err != ERR_OK) {
-		if (es->p) {
-			es->p = NULL;
-		}
-		assert(0);
-		return err;
+	  case ES_RECEIVED:
+	    assert(!es->p);
+	    es->p = p;
+	    tcp_recved(tp, p->tot_len);
+	    SSL_server(es->id);
+	    //eos_echoserver(es->id);
+	    break;
+	  default:
+	    assert(0);
+	  }
 	}
-	switch (es->state) {
-		case ES_ACCEPTED:
-			es->state = ES_RECEIVED;
-			assert(!es->p);
-			es->p = p;
-			tcp_recved(tp, p->tot_len);
-			//eos_echoserver(es->id);
-			SSL_server(es->id);
-			return ERR_OK;
+	end = ps_tsc();
+	/* dbg_update_time(1, end - start); */
+	return ERR_OK;
 
-		case ES_RECEIVED:
-			assert(!es->p);
-			es->p = p;
-			tcp_recved(tp, p->tot_len);
-			SSL_server(es->id);
-			//eos_echoserver(es->id);
-			return ERR_OK;
-		default:
-			assert(0);
-			tcp_recved(tp, p->tot_len);
-			es->p = NULL;
-			return ERR_OK;
-	}
 }
 
 static err_t
@@ -321,7 +305,7 @@ eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 	es->curr = 0;
 	bump_alloc++;
 
-	tcp_arg(tp, es->id);
+	tcp_arg(tp, (void *)(es->id));
 	tcp_err(tp, eos_lwip_tcp_err);
 	tcp_recv(tp, eos_lwip_tcp_recv);
 	tcp_sent(tp, eos_lwip_tcp_sent);
