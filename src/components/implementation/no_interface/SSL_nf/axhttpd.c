@@ -447,7 +447,6 @@ int SSL_server(int id)
         //    sp = sp->next;
         //}
         /* Handle the established sockets */
-	unsigned long long start, end;
 
         tp = usedconns;
 
@@ -465,40 +464,28 @@ int SSL_server(int id)
                     read_post_data(to);
                else 
 #endif
-		start = ps_tsc();
 					procreadhead(to);
-		end = ps_tsc();
-		dbg_update_time(0, end - start);				
             } 
 
             if (to->state == STATE_WANT_TO_SEND_HEAD /*&&
                         FD_ISSET(to->networkdesc, &wfds)*/) 
             {
                 //active--;
-		start = ps_tsc();
                 procsendhead(to);
-		end = ps_tsc();
-		dbg_update_time(1, end - start);
             } 
 
             if (to->state == STATE_WANT_TO_READ_FILE /*&& 
                         FD_ISSET(to->filedesc, &rfds)*/) 
             {
                 //active--;
-		start = ps_tsc();
                 procreadfile(to);
-		end = ps_tsc();
-		dbg_update_time(2, end - start);
             } 
 
             if (to->state == STATE_WANT_TO_SEND_FILE /*&& 
                         FD_ISSET(to->networkdesc, &wfds)*/) 
             {
                 //active--;
-		start = ps_tsc();
                 procsendfile(to);
-		end = ps_tsc();
-		dbg_update_time(3, end - start);
             }
 
 #if defined(CONFIG_HTTP_DIRECTORIES)

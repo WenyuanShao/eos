@@ -488,8 +488,6 @@ void procsendhead(struct connstruct *cn)
             return;
         }
 
-	unsigned long long start, end;
-
         //ptm = gmtime(&stbuf.st_mtime);
         //strftime(last_modified, sizeof(last_modified), rfc1123_format, ptm);
         //t_time += CONFIG_HTTP_TIMEOUT;
@@ -508,10 +506,7 @@ void procsendhead(struct connstruct *cn)
         /*     /\*getmimetype(cn->actualfile), (long) stbuf.st_size,*\/ */
         /*     , SSL_FILE_LEN */
         /*     /\*date, last_modified, expires*\/); */
-		start = ps_tsc();
         special_write(cn, buf, strlen(buf));
-		end = ps_tsc();
-		/* dbg_update_time(1, end - start); */
 
 #ifdef CONFIG_HTTP_VERBOSE
         TTY_FLUSH();

@@ -76,49 +76,6 @@ struct file dummy_file[EOS_FILE_NUM];
 struct ether_addr eth_src, eth_dst;
 uint16_t ether_type;
 
-#define NUM_DBG_TIME 4
-unsigned long long dbgt[NUM_DBG_TIME], dbgn[NUM_DBG_TIME], dgb_gs = 0;
-
-static void
-dbg_time_init()
-{
-  memset(dbgt, 0, sizeof(dbgt));
-  memset(dbgn, 0, sizeof(dbgn));
-  dgb_gs = 0;
-}
-
-static void
-ssl_print_pkt(void * pkt, int len) {
-	int i = 0;
-	printc("{ ");
-	for (i = 0; i < len; i++) {
-		printc("%02x ", ((uint8_t*)(pkt))[i]);
-	}
-	printc("}\n");
-}
-
-static inline void
-dbg_output()
-{
-  unsigned long long cur, avg;
-  int i;
-  cur = ps_tsc();
-  printc("dbg start %llu now %llu tot %llu\n", dgb_gs, cur, cur - dgb_gs);
-  for(i=0; i<NUM_DBG_TIME; i++) {
-    if (dbgn[i] == 0) avg = 1;
-    else avg = dbgt[i] / dbgn[i];
-    printc("dbg i %d num %llu tot %llu avg %llu\n", i, dbgn[i], dbgt[i], avg);
-  }
-}
-
-void
-dbg_update_time(int i, unsigned long long t)
-{
-  dbgt[i] += t;
-  dbgn[i]++;
-  if (cos_cpuid() == 10 && i == 0 && dbgn[i] % 10000 == 0) dbg_output();
-}
-
 /* init size to the file size, curr to 0 when open is called */
 
 /* reset curr to 0 when close is called */
@@ -234,8 +191,6 @@ int
 eos_lwip_tcp_write(int id, void *buf, int len)
 {
 	struct echoserver_struct *es;
-	unsigned long long start, end;
-		start = ps_tsc();
 
 	es = &echo_conn[id];
 	assert(es);
@@ -243,8 +198,6 @@ eos_lwip_tcp_write(int id, void *buf, int len)
 	assert(es->tp);
 	wr_err = tcp_write(es->tp, buf, len, 1);
 	assert(wr_err == ERR_OK);
-		end = ps_tsc();
-		/* dbg_update_time(2, end - start); */
 
 	return len;
 }
@@ -273,9 +226,7 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 {
 	err_t ret_err;
 	struct echoserver_struct *es;
-	unsigned long long start, end, s1, e1;
 
-	start = ps_tsc();
 	es = &echo_conn[(int)arg];
 	assert(es);
 	if (unlikely(p == NULL)) {
@@ -299,8 +250,6 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 	    assert(0);
 	  }
 	}
-	end = ps_tsc();
-	/* dbg_update_time(1, end - start); */
 	return ERR_OK;
 
 }
@@ -369,8 +318,6 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 	char *snd_pkt = NULL;
 	int r, len;
 	char *idx = 0;
-	unsigned long long start, end;
-	start = ps_tsc();
 
 	len     = sizeof(struct ether_hdr) + p->tot_len;
 	snd_pkt = eos_pkt_allocate(input_ring, len);
@@ -392,8 +339,6 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 	}
 	r = eos_pkt_send(output_ring, (void *)snd_pkt, len, tx_port);
 	assert(!r);
-		end = ps_tsc();
-		/* dbg_update_time(3, end - start); */
 
 	return ERR_OK;
 }
@@ -515,14 +460,11 @@ static void
 ssl_server_run() {
 	int len, r;
 	void *pkt;
-	unsigned long long start, end;
 	
 	while(1) {
 		pkt = ssl_get_packet(&len, &tx_port);
 		assert(pkt);
 		assert(len <= EOS_PKT_MAX_SZ);
-		if (dgb_gs == 0) dgb_gs = ps_tsc();
-		start = ps_tsc();
 		if (input_ring->cached.idx == 1) {
 			output_ring->cached.cnt = EOS_PKT_PER_ENTRY + 1;
 		}
@@ -533,8 +475,6 @@ ssl_server_run() {
 			output_ring->cached.cnt = output_ring->cached.idx;
 			eos_pkt_send_flush_force(output_ring);
 		}
-		end = ps_tsc();
-		/* dbg_update_time(0, end - start); */
 	}
 }
 
@@ -549,7 +489,6 @@ cos_init(void *args)
 	if (conf_file_idx == -1) {
 		ssl_server_run();
 	} else {
-	  dbg_time_init();
 		init();
 		printc("ssl server pre populate done\n");
 		nf_hyp_checkpoint(cos_spd_id());

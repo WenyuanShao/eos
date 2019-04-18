@@ -31,9 +31,6 @@
 #include "os_port.h"
 #include "ssl.h"
 
-#include <nf_hypercall.h>
-extern void dbg_update_time(int i, unsigned long long t);
-
 #define BACKLOG 15
 #define VERSION "1.0.0"
 #ifdef CONFIG_HTTP_HAS_IPV6
