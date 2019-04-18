@@ -20,7 +20,6 @@ static struct ip4_addr ip, mask, gw;
 static struct netif cos_if;
 static vaddr_t shmem_addr;
 static struct eos_ring *input_ring, *output_ring;
-struct ether_addr eth_src, eth_dst;
 static int eth_copy = 0;
 static int bump_alloc = 0;
 /* SSL structure */
@@ -74,6 +73,8 @@ struct file {
 };
 
 struct file dummy_file[EOS_FILE_NUM];
+struct ether_addr eth_src, eth_dst;
+uint16_t ether_type;
 
 static void
 ssl_print_pkt(void * pkt, int len) {
@@ -207,8 +208,6 @@ eos_lwip_tcp_write(int id, void *buf, int len)
 	assert(es->tp);
 	wr_err = tcp_write(es->tp, buf, len, 1);
 	assert(wr_err == ERR_OK);
-	wr_err = tcp_output(es->tp);
-	assert(wr_err == ERR_OK);
 
 	return len;
 }
@@ -309,6 +308,7 @@ eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 	tcp_err(tp, eos_lwip_tcp_err);
 	tcp_recv(tp, eos_lwip_tcp_recv);
 	tcp_sent(tp, eos_lwip_tcp_sent);
+	tcp_nagle_disable(tp);
 	SSL_conn_new(es->id);
 
 	ret_err = ERR_OK;
@@ -327,7 +327,7 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 {
 	void *pl;
 	struct ether_hdr *eth_hdr;
-	char *snd_pkt;
+	char *snd_pkt = NULL;
 	int r, len;
 	char *idx = 0;
 
@@ -339,6 +339,7 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 	/* generate new ether_hdr*/
 	ether_addr_copy(&eth_src, &eth_hdr->src_addr);
 	ether_addr_copy(&eth_dst, &eth_hdr->dst_addr);
+	eth_hdr->ether_type = ether_type;
 
 	while(p) {
 		pl = p->payload;
@@ -461,6 +462,7 @@ ssl_get_packet(int *len, u16_t *port)
 		eth_copy = 1;
 		ether_addr_copy(&eth_hdr->src_addr, &eth_dst);
 		ether_addr_copy(&eth_hdr->dst_addr, &eth_src);
+		ether_type = eth_hdr->ether_type;
 	}
 	return pkt;
 }
