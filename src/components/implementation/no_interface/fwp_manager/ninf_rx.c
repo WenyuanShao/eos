@@ -157,7 +157,11 @@ ninf_get_nf_ring(struct rte_mbuf *mbuf)
 	struct pkt_ipv4_5tuple pkt_key;
 
 	ninf_fill_key_symmetric(&pkt_key, mbuf);
+	/* memcached */
 	cid = ntohs(pkt_key.dst_port) - FLOW_START_PORT;
+	
+	/* SSL */
+	cid = ntohs(pkt_key.src_port) - FLOW_START_PORT;
 	assert(cid < EOS_MAX_FLOW_NUM);
 	ninf_ring = fix_rx_outs[cid];
 	if (unlikely(!ninf_ring)) {
