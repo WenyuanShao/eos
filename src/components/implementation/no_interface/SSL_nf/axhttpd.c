@@ -43,7 +43,7 @@
 #include "axhttp.h"
 
 #define IP_ADDR "10.10.1.2"
-//#define ENABLE_HTTPS
+#define ENABLE_HTTPS
 
 //struct serverstruct *servers;
 //struct connstruct *usedconns;

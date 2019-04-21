@@ -8,7 +8,7 @@
 #define EOS_MAX_NF_CHAIN_TYPE_NUM  3 /* number of nf chain templates */
 //#define EOS_MAX_NF_CHAIN_TYPE_NUM  10 /* number of nf chain templates */
 //#define EOS_MAX_CHAIN_NUM_PER_CORE 85 /* 188 */
-#define EOS_MAX_CHAIN_NUM_PER_CORE 20 /* 188 */
+#define EOS_MAX_CHAIN_NUM_PER_CORE 85 /* 188 */
 //#define EOS_MAX_CHAIN_NUM_PER_CORE 5 /* 188 */
 #define EOS_MAX_CHAIN_NUM          ((EOS_MAX_CHAIN_NUM_PER_CORE * (NUM_CPU - NF_MIN_CORE)) + EOS_MAX_NF_CHAIN_TYPE_NUM)
 //#define EOS_MAX_CHAIN_NUM          ((EOS_MAX_CHAIN_NUM_PER_CORE) + EOS_MAX_NF_CHAIN_TYPE_NUM)

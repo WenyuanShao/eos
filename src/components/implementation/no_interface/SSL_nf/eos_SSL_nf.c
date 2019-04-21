@@ -10,7 +10,7 @@
 
 #define ETHER_ADDR_LEN 6
 #define EOS_MAX_CONNECTION 10
-#define EOS_DUMMY_FILE_SIZE 100
+#define EOS_DUMMY_FILE_SIZE 0
 #define EOS_FILE_NUM 1
 
 static int conf_file_idx = 0;
