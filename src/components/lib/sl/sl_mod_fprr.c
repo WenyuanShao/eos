@@ -30,8 +30,8 @@ sl_mod_schedule(void)
 		 * We want to move the selected thread to the back of the list.
 		 * Otherwise fprr won't be truly round robin
 		 */
-		ps_list_rem_d(t);
-		ps_list_head_append_d(&threads[cpu][i], t);
+		/* ps_list_rem_d(t); */
+		/* ps_list_head_append_d(&threads[cpu][i], t); */
 
 		return t;
 	}
