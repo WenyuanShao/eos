@@ -18,7 +18,7 @@
 #include "eos_utils.h"
 #include "eos_ring.h"
 
-#define NUM_NIC_PORTS 2
+#define NUM_NIC_PORTS 4
 #define NUM_MBUFS (2*8192)/* 4096 */
 #define MBUF_CACHE_SIZE 512
 #define BURST_SIZE 32
