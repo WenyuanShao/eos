@@ -132,6 +132,7 @@ eos_pkt_recv_slow(struct eos_ring *ring, struct eos_ring *sent)
 		rn->state              = PKT_RECV_DONE;
 		ring->tail++;
 		test = GET_RING_NODE(ring, ring->head & EOS_RING_MASK);
+		cos_faa(&(ring->pkt_cnt), -(rn->cnt));
 		//printc("@@@@@@@@@@@in recv slow: %d\n", test->state);
 		/* cos_faa(&(ring->pkt_cnt), -1); */
 		return 0;

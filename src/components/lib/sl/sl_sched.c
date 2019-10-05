@@ -243,13 +243,23 @@ sl_thd_block(thdid_t tid)
 	/* TODO: dependencies not yet supported */
 	assert(!tid);
 
+	//t = sl_thd_curr();
+	//int cnt = cos_faa(&(t->wakeup_cnt), -1);
+	//assert(cnt >= 1);
+	//if (cnt = 1) {
+
 	sl_cs_enter();
 	t = sl_thd_curr();
-	if (sl_thd_block_no_cs(t, SL_THD_BLOCKED, 0)) {
-		sl_cs_exit();
-		return;
+	int cnt = cos_faa(&(t->wakeup_cnt), -1);
+	assert(cnt >= 1);
+	if (cnt == 1) {
+		if (sl_thd_block_no_cs(t, SL_THD_BLOCKED, 0)) {
+			sl_cs_exit();
+			return;
+		}
 	}
 	sl_cs_exit_schedule();
+	//}
 
 	return;
 }
@@ -379,11 +389,14 @@ sl_thd_sched_wakeup_no_cs(struct sl_thd *t)
 int
 sl_thd_wakeup_no_cs_rm(struct sl_thd *t)
 {
+	int ret;
 	assert(t);
 
 	/* assert(t->state == SL_THD_BLOCKED || t->state == SL_THD_BLOCKED_TIMEOUT); */
 	t->state = SL_THD_RUNNABLE;
 	sl_mod_wakeup(sl_mod_thd_policy_get(t));
+	ret = cos_faa(&(t->wakeup_cnt), 1);
+	assert(ret >= 0);
 	t->rcv_suspended = 0;
 
 	return 0;
@@ -496,7 +509,7 @@ void
 sl_thd_param_set(struct sl_thd *t, sched_param_t sp)
 {
 	sched_param_type_t type;
-	unsigned int       value;
+	unsigned long long value;
 
 	assert(t);
 

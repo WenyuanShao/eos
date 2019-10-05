@@ -23,7 +23,7 @@ eos_thd_param_set(cpuid_t cpu, struct sl_thd **arg_thd, sched_param_t sp)
 		sl_thd_param_set(*arg_thd, sp);
 		return 0;
 	} else {
-		return sl_xcpu_thd_param_set(cpu, arg_thd, sp);
+		return sl_xcpu_thd_param_set(cpu, sl_thd_thdid(*arg_thd), sp);
 	}
 }
 
@@ -36,6 +36,18 @@ eos_thd_wakeup(cpuid_t cpu, thdid_t tid)
 	} else {
 		return sl_xcpu_thd_wakeup(cpu, tid);
 	}
+}
+
+int
+eos_thd_wakeup_with_dl(cpuid_t cpu, thdid_t tid, unsigned long long deadline)
+{
+	if (cpu == cos_cpuid()) {
+		assert(0);
+		return -EINVAL;
+	} else {
+		return sl_xcpu_thd_wakeup_with_dl(cpu, tid, sched_param_pack(SCHEDP_DEADLINE, deadline));
+	}
+
 }
 
 int

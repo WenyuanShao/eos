@@ -18,13 +18,18 @@
 						req.sl_xcpu_req_initaep_alloc.ret_thd = ret_thd;		\
 					     } while (0)
 
-#define SL_REQ_THD_SET_PARAM(req, arg_thd, sp) do {			\
-						req.sl_xcpu_req_thd_set_param.arg_thd = arg_thd; \
+#define SL_REQ_THD_SET_PARAM(req, tid, sp) do {			\
+						req.sl_xcpu_req_thd_set_param.tid = tid; \
 						req.sl_xcpu_req_thd_set_param.sp = sp; \
 					     } while (0)
 
 #define SL_REQ_THD_WAKEUP(req, tid) do {						\
 						req.sl_xcpu_req_thd_wakeup.tid = tid; \
+					     } while (0)
+
+#define SL_REQ_THD_WAKEUP_WITH_DL(req, tid, sp) do {						\
+						req.sl_xcpu_req_thd_wakeup_with_dl.tid = tid; \
+						req.sl_xcpu_req_thd_wakeup_with_dl.sp = sp; \
 					     } while (0)
 
 #define	SL_REQ_THD_SET_TLS(req, ci, tc, tlsaddr) do { \
@@ -53,6 +58,24 @@ __sl_xcpu_req_exit(struct sl_xcpu_request *req, cpuid_t cpu, sl_xcpu_req_t type)
 	sl_cs_exit();
 	return ret;
 }
+
+
+static inline int
+__sl_xcpu_req_exit_test(struct sl_xcpu_request *req, cpuid_t cpu, sl_xcpu_req_t type)
+{
+	int ret = 0;
+	//unsigned long long start, end;
+	SL_REQ_TYPE(req, type);
+	//start = ps_tsc();
+	if (ck_ring_enqueue_mpsc_xcpu(sl__ring(cpu), sl__ring_buffer(cpu), req) != true) {
+		ret = -ENOMEM;
+	}
+	//end = ps_tsc();
+	//printc("      enqueue overhead: %llu\n", (end-start));
+	//sl_cs_exit();
+	return ret;
+}
+
 
 int
 sl_xcpu_thd_alloc(cpuid_t cpu, cos_thd_fn_t fn, void *data, sched_param_t params[])
@@ -112,7 +135,7 @@ sl_xcpu_initaep_alloc_ext(cpuid_t cpu, struct cos_defcompinfo *dci, struct cos_d
 }
 
 int
-sl_xcpu_thd_param_set(cpuid_t cpu, struct sl_thd **arg_thd, sched_param_t sp)
+sl_xcpu_thd_param_set(cpuid_t cpu, thdid_t tid, sched_param_t sp)
 {
 	struct sl_xcpu_request req;
 
@@ -121,7 +144,7 @@ sl_xcpu_thd_param_set(cpuid_t cpu, struct sl_thd **arg_thd, sched_param_t sp)
 
 	sl_cs_enter();
 
-	SL_REQ_THD_SET_PARAM(req, arg_thd, sp);
+	SL_REQ_THD_SET_PARAM(req, tid, sp);
 	return __sl_xcpu_req_exit(&req, cpu, SL_XCPU_THD_SET_PARAM);
 }
 
@@ -137,6 +160,27 @@ sl_xcpu_thd_wakeup(cpuid_t cpu, thdid_t tid)
 
 	SL_REQ_THD_WAKEUP(req, tid);
 	return __sl_xcpu_req_exit(&req, cpu, SL_XCPU_THD_WAKEUP);
+}
+
+int
+sl_xcpu_thd_wakeup_with_dl(cpuid_t cpu, thdid_t tid, sched_param_t sp)
+{
+	struct sl_xcpu_request req;
+	unsigned long long start, end;
+	int ret;
+
+	if (cpu == cos_cpuid()) return -EINVAL;
+	if (!bitmap_check(sl__globals()->cpu_bmp, cpu)) return -EINVAL;
+
+	//start = ps_tsc();
+	//sl_cs_enter();
+
+	SL_REQ_THD_WAKEUP_WITH_DL(req, tid, sp);
+	ret = __sl_xcpu_req_exit_test(&req, cpu, SL_XCPU_THD_WAKEUP_WITH_DL);
+	//end = ps_tsc();
+
+	//printc("      xcpu_wakeup: %llu\n", end-start);
+	return ret;
 }
 
 int
@@ -193,7 +237,8 @@ sl_xcpu_process_no_cs(void)
 		}
 		case SL_XCPU_THD_SET_PARAM:
 		{
-			t = *req.sl_xcpu_req_thd_set_param.arg_thd;
+			//t = *req.sl_xcpu_req_thd_set_param.arg_thd;
+			t = sl_thd_lkup(req.sl_xcpu_req_thd_set_param.tid);
 			assert(t);
 			sl_thd_param_set(t, req.sl_xcpu_req_thd_set_param.sp);
 			break;
@@ -217,6 +262,14 @@ sl_xcpu_process_no_cs(void)
 		case SL_XCPU_AEP_ALLOC:
 		case SL_XCPU_AEP_ALLOC_EXT:
 		case SL_XCPU_THD_DEALLOC:
+		case SL_XCPU_THD_WAKEUP_WITH_DL:
+		{
+			t = sl_thd_lkup(req.sl_xcpu_req_thd_wakeup_with_dl.tid);
+			assert(t);
+			sl_thd_param_set(t, req.sl_xcpu_req_thd_wakeup_with_dl.sp);
+			sl_thd_wakeup_no_cs_rm(t);
+			break;
+		}
 		default:
 		{
 			PRINTC("Unimplemented request! Aborting!\n");

@@ -5,6 +5,7 @@
 #include <sl.h>
 #include "eos_utils.h"
 #include "fwp_manager.h"
+#include "eos_mca.h"
 
 extern struct mem_seg templates[EOS_MAX_NF_TYPE_NUM];
 
@@ -37,6 +38,14 @@ fwp_confidx_get(void *token)
 	struct click_info *child_info = (struct click_info *) token;
 
 	return child_info->conf_file_idx;
+}
+
+static int
+fwp_idx_get(void *token)
+{
+	struct click_info *child_info = (struct click_info *) token;
+
+	return child_info->idx;
 }
 
 static vaddr_t
@@ -98,6 +107,28 @@ fwp_clean_chain(struct nf_chain *chain)
 	}
 }
 
+static inline int
+__mca_xcpu_op_exit(struct mca_op *op, cpuid_t cpu)
+{
+	int ret = 0;
+	if (ck_ring_enqueue_mpsc_mca(__mca_get_ring(cpu), __mca_get_ring_buf(cpu), op) != true) {
+		ret = -ENOMEM;
+		assert(0);
+	}
+	sl_cs_exit();
+	return ret;
+}
+
+int mca_xcpu_thd_dl_reset(thdid_t tid, cpuid_t cpu)
+{
+	struct mca_op op;
+
+	sl_cs_enter();
+	op.tid = tid;
+
+	return __mca_xcpu_op_exit(&op, cpu);
+}
+
 u32_t
 nf_entry(word_t *ret2, word_t *ret3, int op, word_t arg3, word_t arg4)
 {
@@ -119,6 +150,14 @@ nf_entry(word_t *ret2, word_t *ret3, int op, word_t arg3, word_t arg4)
 		int conf_file_idx;
 		conf_file_idx = fwp_confidx_get(token);
 		*ret2 = (u32_t)conf_file_idx;
+
+		break;
+	}
+	case NF_IDX_GET:
+	{
+		int idx;
+		idx = fwp_idx_get(token);
+		*ret2 = (u32_t)idx;
 
 		break;
 	}
@@ -144,8 +183,13 @@ nf_entry(word_t *ret2, word_t *ret3, int op, word_t arg3, word_t arg4)
 	}
 	case NF_BLOCK:
 	{
-		/* sl_thd_block(0); */
-		sl_thd_yield(0);
+		thdid_t tid = sl_thd_thdid(((struct click_info *)token)->initaep);
+		cpuid_t core_id = ((struct click_info *)token)->core_id;
+
+		//sl_thd_yield(0);
+		ret1 = mca_xcpu_thd_dl_reset(tid, core_id);
+		assert(!ret1);
+		sl_thd_block(0);
 		break;
 	}
 	default:

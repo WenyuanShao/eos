@@ -5,6 +5,7 @@
 #include <cos_defkernel_api.h>
 
 #include "eos_ring.h"
+#include <ck_ring.h>
 
 #define FWP_MEMSEG_SIZE (round_up_to_page(FWP_RINGS_SIZE) + \
 			 round_up_to_page(EOS_RING_SIZE * EOS_PKT_PER_ENTRY * EOS_PKT_MAX_SZ))
@@ -34,6 +35,7 @@ struct click_info {
 	int template_id;
 	int nd_thd, nd_ring, nd_sinv;
 	int core_id;
+	int idx;
 };
 
 struct nf_chain {

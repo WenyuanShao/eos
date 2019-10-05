@@ -3,15 +3,21 @@
 #include "eos_pkt.h"
 #include "ninf.h"
 #include "ninf_util.h"
+#include "eos_mca.h"
 
 #define TX_NUM_MBUFS 8192/* 1024 */
 #define TX_MBUF_DATA_SIZE 0
+#define SPINTIME 60
 #define TX_MBUF_SIZE (TX_MBUF_DATA_SIZE + RTE_PKTMBUF_HEADROOM + sizeof(struct rte_mbuf))
+
+int missed;
+int print_flag;
 
 struct tx_ring {
 	struct eos_ring *r;
 	int state;
 	struct tx_ring *next;
+	int cid;
 };
 
 struct tx_pkt_batch {
@@ -56,6 +62,8 @@ ninf_tx_init()
 {
 	int i;
 	
+	missed = 0;
+	print_flag = 1;
 	tx_fl = tx_rings;
 	for(i=0; i<EOS_MAX_CHAIN_NUM-1; i++) {
 		tx_fl[i].next = &tx_fl[i+1];
@@ -67,7 +75,7 @@ ninf_tx_init()
 }
 
 struct tx_ring *
-ninf_tx_add_ring(struct eos_ring *r)
+ninf_tx_add_ring(struct eos_ring *r, int cid)
 {
 	struct tx_ring *txr;
 
@@ -75,6 +83,7 @@ ninf_tx_add_ring(struct eos_ring *r)
 	assert(txr);
 	txr->r     = r;
 	txr->state = 1;
+	txr->cid = cid;
 	__ring_push(&tx, txr);
 	return txr;
 }
@@ -181,16 +190,21 @@ ninf_tx_process(struct eos_ring *nf_ring)
 	return ret;
 }
 
+//extern struct mca_info global_info[2048 + EOS_MAX_CHAIN_NUM];
 static inline int
 ninf_tx_scan(struct tx_ring **p)
 {
 	struct tx_ring *c;
 	int ret = 0;
+	cycles_t now, deadline;
 
 	c = ps_load(p);
 	while (c) {
 		if (likely(c->state)) {
 			p = &(c->next);
+			rdtscll(now);
+			deadline = mca_info_dl_get(c->cid);
+			if (deadline < now) missed ++;
 			ret += ninf_tx_process(c->r);
 		} else {
 			*p = c->next;
@@ -201,12 +215,71 @@ ninf_tx_scan(struct tx_ring **p)
 	return ret;
 }
 
+static struct rte_eth_stats stats;
+extern unsigned long long *test_rx;
+extern int rx_drop_cnt;
+
+void
+ninf_info_print()
+{
+	int port, cnt, ret;
+
+	for (port = 0; port < NUM_NIC_PORTS; port++) {
+		ret = rte_eth_stats_get(port, &stats);
+		assert(!ret);
+		if (stats.imissed != 0) {
+			cnt = cos_faa(&rx_drop_cnt, 0);
+			printc("      DROPEED BY DKDP/HW: %llu\n", stats.imissed);
+			printc("      MBUF ALLOC FAILED:  %llu\n", stats.rx_nombuf);
+			printc("      DROPPED BY RX:      %d\n", cnt);
+		}
+	}
+}
+
 void
 ninf_tx_loop()
 {
 	int tot_rx = 0;
+	int port, ret, cnt;
+	unsigned long long start, end;
 
+	start = ps_tsc();
+	cnt = 0;
 	while(1) {
+		end = ps_tsc();
 		tot_rx += ninf_tx_scan(&tx);
+		if ((end - start) > (unsigned long long) 2700 * (unsigned long long)1000000 && cnt < 20) {
+			ninf_info_print();
+			start = ps_tsc();
+			cnt++;
+		}
+		//	for (port = 0; port < NUM_NIC_PORTS; port++) {
+		//		ret = rte_eth_stats_get(port, &stats);
+		//		if (stats.imissed != 0) {
+					//printc("      DROPED BY HW:    %llu\n", stats.imissed);
+					//printc("      MBUF ALLOC FAIL: %llu\n", stats.rx_nombuf);
+		//		}
+		//	}
+			/*if (cnt < 100 && cnt > 0) {
+				printc("      rx_loop:         %llu\n", test_rx[cnt-1]);
+			}*/
+		//	cnt++;
+		//	start1 = end1 = ps_tsc();
+		//}
+		/*if ((end - start) > (unsigned long long)SPINTIME * (unsigned long long)2700 * (unsigned long long)1000000 && print_flag){
+			double rate = missed / tot_rx;
+			printc("MISS DEADLINE PERCENTAGE: %lf, MAKED NUM: %d, total : %d\n", rate, (tot_rx - missed), tot_rx);
+			print_flag = 0;
+			printc("PKT DROP INFO:\n");
+			for(port = 0; port < NUM_NIC_PORTS; port++) {
+				printc("   PORT NUM: %d\n", port);
+				ret = rte_eth_stats_get(port, &stats);
+				printc("      process done\n");
+				assert(!ret);
+				printc("      DROPED BY HW:        %llu\n", stats.imissed);
+				printc("      ERROR RECVED PKT:    %llu\n", stats.ierrors);
+				printc("      TRANSMIT FAILED PKT: %llu\n", stats.oerrors);
+			}
+		}*/
 	}
 }

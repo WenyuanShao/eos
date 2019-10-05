@@ -48,7 +48,7 @@ void check_all_ports_link_status(uint8_t port_num, uint32_t port_mask);
 int rte_eth_dev_cos_setup_ports(unsigned nb_ports, struct rte_mempool *mp);
 void print_ether_addr(struct rte_mbuf *m);
 
-struct tx_ring * ninf_tx_add_ring(struct eos_ring *r);
+struct tx_ring * ninf_tx_add_ring(struct eos_ring *r, int cid);
 void ninf_tx_del_ring(struct tx_ring *r);
 struct ipv4_hdr *ninf_pkt_ipv4_hdr(struct rte_mbuf* pkt);
 struct tcp_hdr *ninf_pkt_tcp_hdr(struct rte_mbuf* pkt);

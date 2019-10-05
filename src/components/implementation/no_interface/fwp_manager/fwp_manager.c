@@ -83,6 +83,9 @@ fwp_ci_get(struct cobj_header *h, vaddr_t *comp_info)
  * 5. Some global memory of forked NF also need to be updated properly (mainly for shared ring address).
  * 6. if we do not map shmem into template, and use post-iint template to calculate shmem addr, might simplify some problems.
  */
+
+//extern void ninf_setup_mca_info(void* rh);
+
 static void
 _fwp_fork(struct cos_compinfo *parent_cinfo_l, struct click_info *fork_info, 
 	  struct mem_seg *text_seg, struct mem_seg *data_seg, 
@@ -90,6 +93,7 @@ _fwp_fork(struct cos_compinfo *parent_cinfo_l, struct click_info *fork_info,
 {
 	struct cos_aep_info *fork_aep = cos_sched_aep_get(&fork_info->def_cinfo);
 	struct cos_compinfo *fork_cinfo = cos_compinfo_get(&fork_info->def_cinfo);
+	//struct eos_ring *input_ring, *output_ring;
 	pgtblcap_t ckpt;
 	captblcap_t ckct;
 	vaddr_t dest, addr;
@@ -115,8 +119,15 @@ _fwp_fork(struct cos_compinfo *parent_cinfo_l, struct click_info *fork_info,
 	}
 
 	/* initialize rings*/
-	if (fork_info->nd_ring) eos_rings_init((void *)ring_seg->addr);
+	if (fork_info->nd_ring) {
+		eos_rings_init((void *)ring_seg->addr);
+		//ninf_setup_mca_info((void *)ring_seg->addr);
+		//input_ring = get_input_ring((void *)ring_seg->addr);
+		//output_ring = get_output_ring((void *)ring_seg->addr);
+		//input_ring->mca_info = output_ring->mca_info = mca_info_alloc();
+	}
 	fork_info->conf_file_idx = conf_file_idx;
+	//printc("fork new component done\n");
 }
 
 static vaddr_t
@@ -226,29 +237,29 @@ _fwp_fork_cont(struct cos_compinfo *parent_cinfo, struct click_info *chld_info,
 
 	if (chld_info->nd_thd || chld_info->conf_file_idx != -1) {
 		r = eos_initaep_alloc(coreid, &chld_info->def_cinfo, NULL, 0, 0, 0, &(chld_info->initaep));
+		printc("SPIN: ");
+		printc("%d; %d\n", sl_thd_thdid(chld_info->initaep), chld_info->initaep->state);
 		assert(!r);
 		if (!coreid) {
 			eos_thd_param_set(coreid, &(chld_info->initaep), sched_param_pack(SCHEDP_PRIO, (LOWEST_PRIORITY)));
 			_alloc_tls(parent_cinfo, child_cinfo, child_aep->thd, PAGE_SIZE);
 		} else {
 			eos_thd_param_set(coreid, &(chld_info->initaep), sched_param_pack(SCHEDP_PRIO_BLOCK, (LOWEST_PRIORITY)));
+			//printc("\tSPIN\n");
 			r = eos_thd_set_tls(coreid, parent_cinfo, &(chld_info->def_cinfo.sched_aep[coreid].thd), (void *)heap_ptr);
 			assert(!r);
 		}
 	} else {
 		chld_info->initaep = NULL;
 	}
-	printc("~~~~~~~~~~~~~~~~~\n");
 	/* Create sinv capability from Userspace to Booter components */
 	sinv = cos_sinv_alloc_at(parent_cinfo, parent_cinfo->comp_cap, (vaddr_t)nf_entry_rets_inv, (vaddr_t)chld_info, BOOT_CAPTBL_FIX_SINV);
 	assert(sinv == BOOT_CAPTBL_FIX_SINV);
-
 	if (chld_info->initaep) {
 		copy_caps(parent_cinfo, child_cinfo, ckct, ckpt, ckcc, sinv, sl_thd_thdcap(chld_info->initaep));
 	} else {
 		copy_caps(parent_cinfo, child_cinfo, ckct, ckpt, ckcc, sinv, 0);
 	}
-
 	if (chld_info->conf_file_idx != -1) cos_thd_switch(sl_thd_thdcap(chld_info->initaep));
 }
 
@@ -275,10 +286,12 @@ fwp_fork(struct click_info *chld_info, struct mem_seg *text_seg, struct mem_seg 
 	assert(data_seg);
 	assert(ring_seg);
  
+	printc("core_id : %d; ", coreid);
 	_fwp_fork(parent_cinfo, chld_info, text_seg, data_seg, ring_seg, conf_file_idx, start_addr);
 	allocated_data_seg = _alias_click(parent_cinfo, child_cinfo, text_seg, data_seg, start_addr);
 	_fwp_fork_cont(parent_cinfo, chld_info, allocated_data_seg, cinfo_offset, coreid);
 	_fwp_for_drop_cap(parent_cinfo);
+	//printc("fork_done\n");
 }
 
 void
@@ -288,13 +301,17 @@ fwp_chain_activate(struct nf_chain *chain)
 	struct click_info *this_nf, *new_nf;
 	struct mca_conn *conn;
 	(void)conn;
+	thdid_t this_tid, new_tid;
 
 	list_for_each_nf(this_nf, chain) {
 		new_nf = this_nf->next;
 		if (!new_nf || !new_nf->nd_ring) continue;
 		out1 = get_output_ring((void *)this_nf->shmem_addr);
 		in2  = get_input_ring((void *)new_nf->shmem_addr);
-		conn = mca_conn_create(out1, in2);
+		this_tid = sl_thd_thdid(this_nf->initaep);
+		new_tid = sl_thd_thdid(new_nf->initaep);
+		//conn = mca_conn_create(out1, in2, sl_thd_thdid(this_nf->initaep), sl_thd_thdid(new_nf->initaep), EOS_MAX_DEADLINE);
+		conn = mca_conn_create(out1, in2, this_tid + EOS_MAX_CHAIN_NUM, new_tid + EOS_MAX_CHAIN_NUM);
 	}
 	/* TODO: activate threads */
 	list_for_each_nf(this_nf, chain) {
@@ -303,8 +320,10 @@ fwp_chain_activate(struct nf_chain *chain)
 			assert(this_nf->nd_ring);
 			in2         = get_input_ring((void *)this_nf->shmem_addr);
 			in2->coreid = this_nf->core_id;
-			in2->thdid  = sl_thd_thdid(this_nf->initaep);
-			eos_thd_wakeup(this_nf->core_id, sl_thd_thdid(this_nf->initaep));
+			//in2->mca_info->thdid = sl_thd_thdid(this_nf->initaep);
+			//in2->thdid  = sl_thd_thdid(this_nf->initaep);
+			//eos_thd_wakeup(this_nf->core_id, sl_thd_thdid(this_nf->initaep));
+			//eos_thd_wakeup_with_deadline(this_nf->core_id, &(this_nf->initaep), sched_param_pack(SCHEDP_DEADLINE, 10));
 		}
 	}
 }
@@ -361,7 +380,7 @@ static struct nf_chain *
 fwp_allocate_chain(struct nf_chain *chain, int is_template, int coreid)
 {
 	struct click_info *this_nf, *new_nf, **last_nf;
-	int nfid, ncid, shmemid, last_shmem_id;
+	int nfid, ncid, shmemid, last_shmem_id, idx = 0;
 	struct nf_chain *ret_chain;
 	struct mem_seg *nf_data_seg;
 
@@ -397,6 +416,7 @@ fwp_allocate_chain(struct nf_chain *chain, int is_template, int coreid)
 
 		if (this_nf->nd_ring) shmemid = next_shmem_id++;
 		else shmemid = last_shmem_id;
+		this_nf->idx = idx++;
 		assert(shmemid < EOS_MAX_NF_NUM);
 		last_shmem_id = shmemid;
 		this_nf->shmem_addr = (vaddr_t)fwp_get_shmem(shmemid);
@@ -653,9 +673,11 @@ fwp_create_chain_multi_tency(int len)
 
 	nf2 = nf1 = __copy_nf(3);
 	ret_chain->first_nf = nf1;
+	nf1->idx = 0;
 	for(i=1; i<len; i++) {
 		nf2 = __copy_nf(3);
 		nf1->next = nf2;
+		nf2->idx = i;
 		nf1 = nf2;
 	}
 	nf2->next = NULL;

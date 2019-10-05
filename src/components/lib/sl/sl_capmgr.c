@@ -75,6 +75,7 @@ sl_thd_alloc_init(struct cos_aep_info *aep, asndcap_t sndcap, sl_thd_property_t 
 	t->last_replenish = 0;
 	t->period         = t->timeout_cycs = t->periodic_cycs = 0;
 	t->wakeup_cycs    = 0;
+	t->wakeup_cnt     = 0;
 	t->timeout_idx    = -1;
 	t->prio           = TCAP_PRIO_MIN;
 	ps_list_init(t, SL_THD_EVENT_LIST);
