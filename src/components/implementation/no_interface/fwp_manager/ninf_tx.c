@@ -12,6 +12,7 @@
 
 int missed;
 int print_flag;
+unsigned long long latency;
 
 struct tx_ring {
 	struct eos_ring *r;
@@ -64,6 +65,7 @@ ninf_tx_init()
 	
 	missed = 0;
 	print_flag = 1;
+	latency = 0;
 	tx_fl = tx_rings;
 	for(i=0; i<EOS_MAX_CHAIN_NUM-1; i++) {
 		tx_fl[i].next = &tx_fl[i+1];
@@ -160,6 +162,18 @@ ninf_tx_flush()
 	}
 }
 
+void
+ninf_tx_deadline_check(struct pkt_meta *meta)
+{
+	unsigned long long now;
+
+	rdtscll(now);
+	latency = latency + (now - meta->arrive);
+	if (now > meta->deadline) {
+		missed ++;
+	}
+}
+
 static inline int
 ninf_tx_process(struct eos_ring *nf_ring)
 {
@@ -175,6 +189,9 @@ ninf_tx_process(struct eos_ring *nf_ring)
 		//assert(scache.cnt);
 		for(i=0; i<scache.cnt; i++) {
 			ninf_tx_add_pkt(nf_ring, (struct eos_ring_node *)sent, &(scache.pkts[i]));
+#ifdef EOS_EDF
+			ninf_tx_deadline_check(&(scache.pkts[i]));
+#endif
 		}
 
 		if (scache.cnt != 0)
@@ -195,17 +212,24 @@ static inline int
 ninf_tx_scan(struct tx_ring **p)
 {
 	struct tx_ring *c;
-	int ret = 0;
-	cycles_t now, deadline;
+	int ret = 0, t;
+	cycles_t now, deadline, arrive;
 
 	c = ps_load(p);
 	while (c) {
 		if (likely(c->state)) {
 			p = &(c->next);
-			rdtscll(now);
-			deadline = mca_info_dl_get(c->cid);
-			if (deadline < now) missed ++;
-			ret += ninf_tx_process(c->r);
+			t = ninf_tx_process(c->r);
+			ret += t;
+/*#ifdef EOS_EDF
+			if (likely(t > 0)) {
+				rdtscll(now);
+				deadline = mca_info_dl_get(c->cid);
+				arrive = mca_info_recv_get(c->cid);
+				if (deadline < now) missed ++;
+				latency = (now - arrive) + latency;
+			}
+#endif*/
 		} else {
 			*p = c->next;
 			__ring_push(&tx_fl, c);
@@ -220,19 +244,33 @@ extern unsigned long long *test_rx;
 extern int rx_drop_cnt;
 
 void
-ninf_info_print()
+ninf_info_print(int tot_rx)
 {
 	int port, cnt, ret;
+	double rate;
+	unsigned long long lat;
 
-	for (port = 0; port < NUM_NIC_PORTS; port++) {
+	for (port = 0; port < 1; port++) {
 		ret = rte_eth_stats_get(port, &stats);
 		assert(!ret);
-		if (stats.imissed != 0) {
-			cnt = cos_faa(&rx_drop_cnt, 0);
-			printc("      DROPEED BY DKDP/HW: %llu\n", stats.imissed);
-			printc("      MBUF ALLOC FAILED:  %llu\n", stats.rx_nombuf);
-			printc("      DROPPED BY RX:      %d\n", cnt);
+		//if (stats.imissed != 0 || tot_rx != 0) {
+		cnt = cos_faa(&rx_drop_cnt, 0);
+		//if (cnt != 0 || stats.imissed != 0) {
+			//assert(tot_rx != 0);
+		printc("----------------------------------------\n");
+		printc("      DROPEED BY DKDP/HW:     %llu\n", stats.imissed);
+		printc("      MBUF ALLOC FAILED:      %llu\n", stats.rx_nombuf);
+		printc("      DROPPED BY RX:          %d\n", cnt);
+		printc("      NUM OF MISSED DEADLINE: %d\n", missed + cnt);
+		printc("      TOTAL SENT:             %d\n", tot_rx);
+		if (tot_rx > 0) {
+			double rate = (double)(missed+cnt) / (double)(tot_rx+cnt);
+			lat = latency / tot_rx;
+			lat = lat / (double)2700;
+			printc("      MISSED RATE:            %lf%%\n", rate*100);
+			printc("      AVG LATENCY:            %llu\n", lat);
 		}
+		//}
 	}
 }
 
@@ -243,13 +281,13 @@ ninf_tx_loop()
 	int port, ret, cnt;
 	unsigned long long start, end;
 
-	start = ps_tsc();
+	start = end = ps_tsc();
 	cnt = 0;
 	while(1) {
 		end = ps_tsc();
 		tot_rx += ninf_tx_scan(&tx);
-		if ((end - start) > (unsigned long long) 2700 * (unsigned long long)1000000 && cnt < 20) {
-			ninf_info_print();
+		if ((end - start) > (unsigned long long) 2700 * (unsigned long long)20000000 && cnt < 5) {
+			ninf_info_print(tot_rx);
 			start = ps_tsc();
 			cnt++;
 		}
