@@ -81,7 +81,7 @@ $(COMPONENT): $(OBJS)
 
 %.o:%.c
 	$(info |     [CC]   $<: Compiling)
-	@$(MUSLCC) $(INCLUDE) $(CFLAGS) -o $@ -c $<
+	@$(MUSLCC) $(INCLUDE) $(CFLAGS) -DMQTTS -o $@ -c $<
        
 %.o:%.cc
 	$(info |     [CXX]  $<: Compiling)

@@ -10,6 +10,7 @@
 #include "ninf.h"
 
 extern volatile int init_core_done;
+int test_print = 0;
 /* Assembly function for sinv from new component */
 extern word_t nf_entry_rets_inv(invtoken_t cur, int op, word_t arg1, word_t arg2, word_t *ret2, word_t *ret3);
 
@@ -186,7 +187,6 @@ copy_caps(struct cos_compinfo *parent_cinfo_l, struct cos_compinfo *fork_cinfo,
 	/* printc("\tCopying pgtbl, captbl, component capabilities\n"); */
 	ret = cos_cap_cpy_at(fork_cinfo, BOOT_CAPTBL_SELF_CT, parent_cinfo_l, ckct);
 	assert(ret == 0);
-
 	ret = cos_cap_cpy_at(fork_cinfo, BOOT_CAPTBL_SELF_PT, parent_cinfo_l, ckpt);
 	assert(ret == 0);
 
@@ -320,9 +320,11 @@ fwp_chain_activate(struct nf_chain *chain)
 			assert(this_nf->nd_ring);
 			in2         = get_input_ring((void *)this_nf->shmem_addr);
 			in2->coreid = this_nf->core_id;
+			in2->thdid  = sl_thd_thdid(this_nf->initaep);
 			//in2->mca_info->thdid = sl_thd_thdid(this_nf->initaep);
-			//in2->thdid  = sl_thd_thdid(this_nf->initaep);
-			//eos_thd_wakeup(this_nf->core_id, sl_thd_thdid(this_nf->initaep));
+#ifndef EOS_EDF
+			eos_thd_wakeup(this_nf->core_id, sl_thd_thdid(this_nf->initaep));
+#endif
 			//eos_thd_wakeup_with_deadline(this_nf->core_id, &(this_nf->initaep), sched_param_pack(SCHEDP_DEADLINE, 10));
 		}
 	}
@@ -424,6 +426,7 @@ fwp_allocate_chain(struct nf_chain *chain, int is_template, int coreid)
 		mem_seg.size = FWP_MEMSEG_SIZE;
 		if (is_template) nf_data_seg = d_seg;
 		else nf_data_seg = this_nf->data_seg;
+		//printc("data_seg: %d\n", d_seg->size);
 		fwp_fork(this_nf, t_seg, nf_data_seg, &mem_seg, this_nf->conf_file_idx, cinfo_offset, s_addr, coreid);
 	}
 	if (!is_template) {
@@ -454,9 +457,13 @@ fwp_mgr_loop()
 		/* TODO: clean up chain, put them back to cache */
 		/* TODO: if not enough fwp in cache, fork more */
 		/* fwp_clean_chain(&chains[0]); */
+		if (end - start > (unsigned long long)2700 * (unsigned long long)1000000 * (unsigned long long)60) {
+			test_print = 1;
+		}
 		__asm__ __volatile__("rep;nop": : :"memory");
 		end = ps_tsc();
 	}
+	printc("Time out\n");
 	assert(0);
 }
 
@@ -491,9 +498,12 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 	chain = fwp_create_chain_multi_tency(1);
 	/* chain = fwp_create_chain_multi_tency_share(2); */
 	fwp_allocate_chain(chain, 1, 0);
+
 	for(i=NF_MIN_CORE; i<NF_MAX_CORE; i++) {
+			//for(i=NF_MIN_CORE; i<5; i++) {
 		for(j=0; j<EOS_MAX_CHAIN_NUM_PER_CORE; j++) {
 			/* printc("core %d j %d tot %d cap fronteers: %lu %lu heap %x untype %x fonter %x\n", i, j, j + (i-NF_MIN_CORE)*EOS_MAX_CHAIN_NUM_PER_CORE, CURR_CINFO()->cap_frontier, CURR_CINFO()->caprange_frontier, CURR_CINFO()->vas_frontier, CURR_CINFO()->mi.untyped_ptr, CURR_CINFO()->mi.untyped_frontier); */
+			//printc("[%d; %d: ]", i, j);
 			fwp_allocate_chain(chain, 0, i);
 		}
 	}

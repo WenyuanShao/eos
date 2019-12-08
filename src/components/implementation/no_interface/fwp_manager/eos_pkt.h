@@ -48,6 +48,7 @@ eos_pkt_send_flush_force(struct eos_ring *ring)
 {
 	volatile struct eos_ring_node *rn;
 	pkt_states_t state;
+	int fh;
 
 	assert(ring->cached.cnt <= EOS_PKT_PER_ENTRY);
 	//if (ring->cached.cnt == 0) return 0;
@@ -61,6 +62,7 @@ eos_pkt_send_flush_force(struct eos_ring *ring)
 	memcpy((void *)rn, &(ring->cached), sizeof(struct eos_ring_node));
 	ring->tail++;
 	ring->cached.cnt = 0;
+	fh = cos_faa(&(ring->pkt_cnt), 1);
 	return 0;
 }
 
@@ -69,6 +71,7 @@ eos_pkt_send_flush(struct eos_ring *ring)
 {
 	volatile struct eos_ring_node *rn;
 	pkt_states_t state;
+	int fh;
 
 	assert(ring->cached.cnt <= EOS_PKT_PER_ENTRY);
 	if (ring->cached.cnt == 0) return 0;
@@ -82,6 +85,36 @@ eos_pkt_send_flush(struct eos_ring *ring)
 	memcpy((void *)rn, &(ring->cached), sizeof(struct eos_ring_node));
 	ring->tail++;
 	ring->cached.cnt = 0;
+	fh = cos_faa(&(ring->pkt_cnt), 1);
+	//printc("flush success: state: %d\n", rn->state);
+	return 0;
+}
+
+static inline int
+eos_pkt_send_test(struct eos_ring *ring, void *pkt, int len, int port, unsigned long long deadline, unsigned long long arrive)
+{
+	int r;
+	struct eos_ring_node *cache;
+	struct pkt_meta *meta;
+	int i = 0;
+
+	cache = &(ring->cached);
+	if (cache->cnt == cache->idx) {
+		r = eos_pkt_send_flush(ring);
+		if (unlikely(r)) return r;
+		if (r == 0) i++;
+	}
+	meta           = &(cache->pkts[cache->idx++]);
+	meta->pkt      = pkt;
+	meta->pkt_len  = len;
+	meta->port     = port;
+	meta->deadline = deadline;
+	meta->arrive   = arrive;
+	if (cache->cnt == cache->idx) {
+		r = eos_pkt_send_flush(ring);
+		if (r == 0)	i++;
+	}
+	assert(i<=1);
 	return 0;
 }
 
@@ -97,12 +130,13 @@ eos_pkt_send(struct eos_ring *ring, void *pkt, int len, int port)
 		r = eos_pkt_send_flush(ring);
 		if (unlikely(r)) return r;
 	}
-	meta          = &(cache->pkts[cache->idx++]);
-	meta->pkt     = pkt;
-	meta->pkt_len = len;
-	meta->port    = port;
+	meta           = &(cache->pkts[cache->idx++]);
+	meta->pkt      = pkt;
+	meta->pkt_len  = len;
+	meta->port     = port;
 	if (cache->cnt == cache->idx) {
 		r = eos_pkt_send_flush(ring);
+		if (unlikely(r)) return r;
 	}
 	return 0;
 }
@@ -119,28 +153,56 @@ eos_pkt_recv_slow(struct eos_ring *ring, struct eos_ring *sent)
 		ring->tail++;
 	}
 	if (likely(rn->state == PKT_RECV_READY)) {
-		//printc("###########in recv slow: %d, %d\n", ring->tail, ring->head);
 		memcpy(&(ring->cached), (void *)rn, sizeof(struct eos_ring_node));
 		assert(ring->cached.cnt);
 		assert(ring->cached.idx == 0);
 		assert(sent->cached.cnt == 0);
 		assert(sent->cached.idx == 0);
 		memcpy(sent->cached.pkts, ring->cached.pkts, sizeof(ring->cached.pkts));
-		//printc("<<<<<<<< %p, >>>>>>>>>: %p\n", sent->cached.pkts, ring->cached.pkts);
 		ring->cached.alloc_idx = 0;
 		sent->cached.cnt       = ring->cached.cnt;
 		rn->state              = PKT_RECV_DONE;
 		ring->tail++;
 		test = GET_RING_NODE(ring, ring->head & EOS_RING_MASK);
 		cos_faa(&(ring->pkt_cnt), -(rn->cnt));
-		//printc("@@@@@@@@@@@in recv slow: %d\n", test->state);
-		/* cos_faa(&(ring->pkt_cnt), -1); */
 		return 0;
 	} else if (rn->state == PKT_RECV_DONE) {
 		return -ECOLLET;
 	} else {
 		return -EBLOCK;
 	}
+}
+
+static inline void *
+eos_pkt_recv_test(struct eos_ring *ring, int *len, int *port, unsigned long long *deadline, unsigned long long *arrive, int *err, struct eos_ring *sent)
+{
+	int r;
+	void *ret = NULL;
+	struct eos_ring_node *cache;
+	struct pkt_meta *meta;
+
+	if (ring->cached.cnt == ring->cached.idx) {
+		r =eos_pkt_recv_slow(ring, sent);
+		if (r) {
+			*err = r;
+			return NULL;
+		}
+	}
+	cache = &(ring->cached);
+	meta = &(cache->pkts[cache->idx]);
+	assert(meta->pkt);
+	assert(meta->pkt_len);
+	ret       = meta->pkt;
+	*len      = meta->pkt_len;
+	*port     = meta->port;
+	*deadline = meta->deadline;
+	*arrive   = meta->arrive;
+	cache->idx++;
+	/* if (ring->cached.idx < ring->cached.cnt) { */
+	__builtin_prefetch(cache->pkts[cache->idx].pkt, 1);
+	/* } */
+
+	return ret;
 }
 
 static inline void *
@@ -197,9 +259,9 @@ collect:
 		memcpy(&rcache, (void *)rn, sizeof(struct eos_ring_node));
 		assert(recv->head == sent->head);
 		for(i=0; i<EOS_PKT_PER_ENTRY; i++) {
-			if (rcache.pkts[i].pkt != scache.pkts[i].pkt) {
+			/*if (rcache.pkts[i].pkt != scache.pkts[i].pkt) {
 				printc("@@@: %p, ###: %p, head_r: %d, head_s: %d\n", rcache.pkts[i].pkt, scache.pkts[i].pkt, recv->head, sent->head);
-			}
+			}*/
 			assert(rcache.pkts[i].pkt == scache.pkts[i].pkt);
 		}
 		scache.cnt   = scache.idx = 0;

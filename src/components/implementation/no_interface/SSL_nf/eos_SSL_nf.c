@@ -226,6 +226,7 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 {
 	err_t ret_err;
 	struct echoserver_struct *es;
+	//printc("\tin receive\n");
 
 	es = &echo_conn[(int)arg];
 	assert(es);
@@ -291,7 +292,8 @@ eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 	es->id = bump_alloc;
 	es->curr = 0;
 	bump_alloc++;
-
+	
+	//printc("\tin accetp\n");
 	tcp_arg(tp, (void *)(es->id));
 	tcp_err(tp, eos_lwip_tcp_err);
 	tcp_recv(tp, eos_lwip_tcp_recv);
@@ -380,6 +382,7 @@ eos_create_tcp_connection()
 	struct tcp_pcb *new_tp, *tp;
 	
 	tp = tcp_new();
+	//printc("\tin connection\n");
 	if (tp == NULL) {
 		printc("Could not create tcp connection\n");
 	}
@@ -442,6 +445,7 @@ ssl_get_packet(int *len, u16_t *port)
 	eos_pkt_collect(input_ring, output_ring);
 	pkt = eos_pkt_recv(input_ring, len, port, &err, output_ring);
 	while (unlikely(!pkt)) {
+		//printc("\tpacket get fail\n");
 		if (err == -EBLOCK) nf_hyp_block();
 		else if (err == -ECOLLET) eos_pkt_collect(input_ring, output_ring);
 		pkt = eos_pkt_recv(input_ring, len, port, &err, output_ring);

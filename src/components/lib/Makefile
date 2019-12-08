@@ -17,6 +17,7 @@ all: $(LIBS) $(MAND) $(SIMPLE_STKLIB) $(SIMPLE_STKLIB_NF) sl
 	make -C lwip/cos
 	make -C axTLS CC=$(MUSLCC)
 	cp axTLS/_stage/libaxtls.a .
+	make -C mqtt/rsmb/src CC=$(MUSLCC)
 
 # we have to compile these without dietlibc so that there are not
 # symbol conflicts and this is why we have the %.a here and don't
@@ -52,6 +53,7 @@ clean:
 	make -C sl clean
 	make -C lwip/cos clean
 	make -C axTLS clean
+	make -C mqtt/rsmb/src clean
 
 distclean:
 	make -C musl-1.1.11 distclean
@@ -64,6 +66,8 @@ distclean:
 	make -C dpdk clean
 	make -C lwip/cos clean
 	make -C axTLS clean
+	make -C NN/Debug clean
+	make -C mqtt/rsmb/src clean
 
 musl:
 	cd musl-1.1.11; ./configure "CFLAGS=-m32 -O3" "LDFLAGS=-Wl,-melf_i386" --disable-shared --target=i386; cd ..
@@ -86,6 +90,8 @@ init: clean distclean musl ck ps all
 	make -C axTLS CC=$(MUSLCC)
 	cp axTLS/_stage/libaxtls.a .
 	cd dpdk && make config T=i686-native-cosapp-gcc && make V=y && cp build/lib/* ../ #&& cp -av build/include/rte_eal.h ../../include/rte_eal.h && cp -av build/include/rte_ring.h ../../include/rte_ring.h
+	make -C NN/Debug
+	make -C mqtt/rsmb/src CC=$(MUSLCC)
 
 lwipclean:
 	make -C lwip/cos clean

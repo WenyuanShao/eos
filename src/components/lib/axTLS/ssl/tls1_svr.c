@@ -74,7 +74,7 @@ EXP_FUNC SSL * STDCALL ssl_server_new(SSL_CTX *ssl_ctx, int client_fd)
  */
 int do_svr_handshake(SSL *ssl, int handshake_type, uint8_t *buf, int hs_len)
 {
-	printf("server\n");
+	//printf("server\n");
     int ret = SSL_OK;
     ssl->hs_status = SSL_NOT_OK;            /* not connected */
     /* To get here the state must be valid */

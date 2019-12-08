@@ -8,6 +8,7 @@ typedef unsigned short int nfid_t;
 enum llboot_cntl {
        NF_MALLOC = 0,
        NF_CONFIDX_GET,
+	   NF_IDX_GET,
        NF_SHMEM_GET,
        NF_CHECKPOINT,
        NF_CLEAN,
@@ -28,6 +29,14 @@ nf_hyp_confidx_get(int *conf_file_idx)
        word_t unused = 0;       
 
        return cos_sinv_rets(BOOT_CAPTBL_HYP_SINV_CAP, 0, NF_CONFIDX_GET, 0, 0, (word_t *)conf_file_idx, &unused);
+}
+
+static inline int
+nf_hyp_nf_idx_get(int *idx)
+{
+       word_t unused = 0;       
+
+	   return cos_sinv_rets(BOOT_CAPTBL_HYP_SINV_CAP, 0, NF_IDX_GET, 0, 0, (word_t *)idx, &unused);
 }
 
 static inline int

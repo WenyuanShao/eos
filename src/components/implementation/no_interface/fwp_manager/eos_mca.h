@@ -4,6 +4,14 @@
 #include "eos_ring.h"
 #include <ck_ring.h>
 
+#define EOS_EDF
+
+/*
+#ifdef EOS_EDF
+#undef EOS_EDF
+#endif
+*/
+
 /*struct mca_info {
 	int deadline;
 	int offset;
@@ -23,6 +31,7 @@ struct mca_conn {
 
 struct mca_op {
 	thdid_t tid;
+	vaddr_t shmem_addr;
 };
 
 struct dl {
@@ -35,7 +44,8 @@ struct mca_info {
 	int          offset;
 	int          info_idx;
 	int          used;
-	struct dl    dl_ring[EOS_RING_SIZE];
+	int          empty_flag;
+	struct dl    dl_ring[EOS_RING_SIZE+1];
 	int          head;
 	int          tail;
 };
@@ -52,8 +62,9 @@ struct mca_conn *mca_conn_create(struct eos_ring *src, struct eos_ring *dst, int
 void mca_conn_free(struct mca_conn *conn);
 void mca_init(struct cos_compinfo *parent_cinfo);
 void mca_run(void *d);
-int mca_dl_enqueue(int cid, cycles_t deadline);
+int mca_dl_enqueue(int cid, cycles_t deadline, int test);
 cycles_t mca_info_dl_get(int cid);
+cycles_t mca_info_recv_get(int cid);
 
 CK_RING_PROTOTYPE(mca, mca_op);
 extern struct mca_global mca_global_data;
@@ -76,7 +87,7 @@ __mca_get_ring_buf(cpuid_t cpu)
 	return (__get_mca_global_data()->mca_rbuf[cpu]);
 }
 
-int mca_xcpu_thd_dl_reset(thdid_t tid, cpuid_t cpu);
+int mca_xcpu_thd_dl_reset(thdid_t tid, cpuid_t cpu, vaddr_t shmem_addr);
 
 void mca_debug_print(int cid);
 

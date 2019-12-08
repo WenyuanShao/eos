@@ -21,7 +21,11 @@ fwp_chain_get(enum fwp_chain_state state, unsigned short core)
 	struct nf_chain *r, *t, **h;
 
 	h = &fwp_chain_cache[state][core];
-	assert(*h);
+	//assert(*h);
+	if (!*h) {
+		printc("      state: %d, core: %d\n", state, core);
+		assert(0);
+	}
 	do {
 		r = ps_load(h);
 		t = r->next;

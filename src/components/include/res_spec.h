@@ -47,23 +47,23 @@ typedef enum {
 #define SCHED_PARAM_TYPE_BITS 8
 struct sched_param_s {
 	sched_param_type_t type : (SCHED_PARAM_TYPE_BITS);
-	unsigned int       value : (32 - SCHED_PARAM_TYPE_BITS);
+	unsigned long long value : (64 - SCHED_PARAM_TYPE_BITS);
 } __attribute__((packed));
 
 union sched_param_union {
 	struct sched_param_s c; /* composite */
-	u32_t                v; /* value     */
+	u64_t                v; /* value     */
 };
-typedef u32_t sched_param_t;
+typedef u64_t sched_param_t;
 
 static inline sched_param_t
-sched_param_pack(sched_param_type_t type, unsigned int value)
+sched_param_pack(sched_param_type_t type, unsigned long long value)
 {
 	return ((union sched_param_union){.c = {.type = type, .value = value}}).v;
 }
 
 static inline void
-sched_param_get(sched_param_t sp, sched_param_type_t *type, unsigned int *value)
+sched_param_get(sched_param_t sp, sched_param_type_t *type, unsigned long long *value)
 {
 	struct sched_param_s s = *(struct sched_param_s *)(void *)&sp;
 

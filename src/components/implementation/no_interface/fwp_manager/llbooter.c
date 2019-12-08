@@ -62,6 +62,7 @@ boot_find_cobjs(struct cobj_header *h, int n)
 	}
 
 	hs[n] = NULL;
+	printc("########\n");
 	PRINTLOG(PRINT_DEBUG, "cobj %s:%d found at %p:%x -> %x\n", hs[n - 1]->name, hs[n - 1]->id, hs[n - 1], hs[n-1]->size,
 	       cobj_sect_get(hs[n - 1], 0)->vaddr);
 
@@ -474,16 +475,16 @@ cos_init(void)
 		cos_defcompinfo_sched_init();
 		switch (cur_coreid) {
 		case MCA_CORE:
-			sl_init(SL_MIN_PERIOD_US*1000);
+			sl_init(SL_MIN_PERIOD_US*1000*60*10);
 			cos_faa(&init_core_done, 1);
-			printc("mca_run core %d\n", MCA_CORE);
+			//printc("mca_run core %d\n", MCA_CORE);
 			mca_run(NULL);
 			assert(0);
 		case NINF_RX_CORE:
 			sl_init(SL_MIN_PERIOD_US*1000);
 			ninf_rx_init();
 			rx_init_done = 1;
-			printc("ninf_rx_loop core %d\n", NINF_RX_CORE);
+			//printc("ninf_rx_loop core %d\n", NINF_RX_CORE);
 			cos_faa(&init_core_done, 1);
 			ninf_rx_loop();
 			assert(0);
@@ -494,7 +495,7 @@ cos_init(void)
 			}
 			ninf_tx_init();
 			cos_faa(&init_core_done, 1);
-			printc("ninf_tx_init core %d\n", NINF_TX_CORE);
+			//printc("ninf_tx_init core %d\n", NINF_TX_CORE);
 			ninf_tx_loop();
 			assert(0);
 		default:
@@ -527,7 +528,7 @@ cos_init(void)
 	boot_create_cap_system(&sinv_next[h->id]);
 	boot_child_info_print();
 
-       fwp_prepare_and_test(cobj_sect_get(h, 0)->vaddr, h->id, sinv_next[h->id]); 
+    fwp_prepare_and_test(cobj_sect_get(h, 0)->vaddr, h->id, sinv_next[h->id]);
 
 	boot_done();
 }

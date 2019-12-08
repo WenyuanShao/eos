@@ -49,7 +49,7 @@ void sl_mod_yield(struct sl_thd_policy *t, struct sl_thd_policy *tp);
 
 void sl_mod_thd_create(struct sl_thd_policy *t);
 void sl_mod_thd_delete(struct sl_thd_policy *t);
-void sl_mod_thd_param_set(struct sl_thd_policy *t, sched_param_type_t type, unsigned int val);
+void sl_mod_thd_param_set(struct sl_thd_policy *t, sched_param_type_t type, unsigned long long val);
 void sl_mod_init(void);
 
 #endif /* SL_PLUGINS_H */

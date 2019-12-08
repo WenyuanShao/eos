@@ -92,6 +92,7 @@ struct sl_thd {
 	cycles_t    timeout_cycs;  /* next timeout - used in timeout API */
 	cycles_t    wakeup_cycs;   /* actual last wakeup - used in timeout API for jitter information, etc */
 	int         timeout_idx;   /* timeout heap index, used in timeout API */
+	int         wakeup_cnt;
 
 	struct event_info event_info;
 	struct ps_list    SL_THD_EVENT_LIST; /* list of events for the scheduler end-point */

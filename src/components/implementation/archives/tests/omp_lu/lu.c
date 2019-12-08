@@ -40,7 +40,7 @@ void *hp = (void *)0x80000000;
 #include <sys/types.h>
 #include <sys/resource.h>
 
-#define NUM_CPU 40
+#define NUM_CPU 8
 void set_smp_affinity()
 {
 	char cmd[64];

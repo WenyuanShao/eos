@@ -169,6 +169,7 @@ ninf_tx_deadline_check(struct pkt_meta *meta)
 
 	rdtscll(now);
 	latency = latency + (now - meta->arrive);
+	assert(meta->deadline);
 	if (now > meta->deadline) {
 		missed ++;
 	}

@@ -4,6 +4,7 @@
 #include "ninf_util.h"
 #include "fwp_chain_cache.h"
 #include "eos_sched.h"
+#include "eos_mca.h"
 
 //#define NO_FLOW_ISOLATION
 #define PER_FLOW_CHAIN
@@ -155,6 +156,7 @@ ninf_proc_new_flow(struct rte_mbuf *mbuf, struct pkt_ipv4_5tuple *key, uint32_t 
 	ninf_flow_tbl_add(key, rss, rx_out);
 }
 
+int num_flow = 0;
 static inline struct eos_ring *
 ninf_get_nf_ring(struct rte_mbuf *mbuf, int* flow_id)
 {
@@ -190,7 +192,10 @@ ninf_get_nf_ring(struct rte_mbuf *mbuf, int* flow_id)
 
 	ninf_fill_key_symmetric(&pkt_key, mbuf);
 	/* memcached */
-	cid = ntohs(pkt_key.dst_port) - FLOW_START_PORT;
+	//cid = ntohs(pkt_key.dst_port) - FLOW_START_PORT;
+	
+	/* mqtt */
+	cid = ntohs(pkt_key.src_port) - FLOW_START_PORT;
 	
 	/* SSL */
 	//cid = ntohs(pkt_key.src_port) - FLOW_START_PORT;
@@ -201,6 +206,7 @@ ninf_get_nf_ring(struct rte_mbuf *mbuf, int* flow_id)
 	if (unlikely(!ninf_ring)) {
 		coreid = ninf_flow2_core(NULL, NULL, 0);
 		//printc("\tcid: %d, coreid: %d\n", cid, coreid);
+		//printc("      cid: %d: EOS_MAX_CHAIN_NUM: %d\n", num_flow++, EOS_MAX_CHAIN_NUM);
 		fix_chain = fwp_chain_get(FWP_CHAIN_CLEANED, coreid);
 		assert(fix_chain);
 		//ninf_ring = ninf_setup_new_chain(fix_chain, port_id-FLOW_START_PORT);
@@ -267,6 +273,7 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 	struct eos_ring *ninf_ring;
 	int r, cid, mca_head, cnt;
 	unsigned long long start, end;
+	unsigned long long deadline, arrive;
 
 
 	assert(mbuf);
@@ -289,17 +296,21 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 		//ninf_ring->cached.cnt = EOS_PKT_PER_ENTRY;
 		ninf_ring->cached.cnt = 1; // add for tcp to allow send mutiple packets
 		assert(rte_pktmbuf_data_len(mbuf) <= EOS_PKT_MAX_SZ);
-		r = eos_pkt_send(ninf_ring, rte_pktmbuf_mtod(mbuf, void *), rte_pktmbuf_data_len(mbuf), IN2OUT_PORT(in_port));
-		if (likely(!r)) {
-			//printc("cid: %d\n", cid);
-			mca_head = mca_dl_enqueue(cid, dl_tbl[cid]);
-			//assert(mca_head == ninf_ring->tail);
+		rdtscll(arrive);
+		deadline = arrive + dl_tbl[cid];
+		//printc("      arrive: %llu, deadline: %llu\n", arrive, deadline);
+		r = eos_pkt_send_test(ninf_ring, rte_pktmbuf_mtod(mbuf, void *), rte_pktmbuf_data_len(mbuf), IN2OUT_PORT(in_port), deadline, arrive);
+		//printc("mca_tail: %d", ninf_ring->tail);
+#ifdef EOS_EDF
+		if (likely(r == 0)) {
+			mca_head = mca_dl_enqueue(cid, dl_tbl[cid], ninf_ring->tail);
 		}
 		cnt++;
+#endif
 	} while (unlikely(r == -ECOLLET));
-	if (cnt > 1) {
+	/*if (cnt > 1) {
 		printc("tried: %d times\n", cnt);
-	}
+	}*/
 	//end = ps_tsc();
 	/* drop pkts */
 	/* if (unlikely(r)) rte_pktmbuf_free(mbuf); */
@@ -308,14 +319,14 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 		rte_pktmbuf_free(mbuf);
 		tot_free_mbuf += (long long int)1;
 		cos_faa(&rx_drop_cnt, 1);
-		//mca_debug_print(cid);
+		mca_debug_print(cid);
 
-		/*volatile struct eos_ring_node *rn;
+		volatile struct eos_ring_node *rn;
 		rn = GET_RING_NODE(ninf_ring, (ninf_ring->tail & EOS_RING_MASK));
 		printc("      tail:     %d\n", ninf_ring->tail);
 		printc("      mca_head: %d\n", ninf_ring->mca_head);
 		printc("      state:    %d\n", rn->state);
-		assert(0);*/
+		assert(0);
 	}
 	else prev_collect--;
 	//end = ps_tsc();
@@ -384,12 +395,13 @@ ninf_rx_loop()
 		/* } */
 		/* i = (i+1) % EOS_MAX_FLOW_NUM; */
 
-		if (fix_rx_outs[i]) {
-			/* ninf_pkt_collect(fix_rx_outs[i]); */
+		/*if (fix_rx_outs[i]) {
+			//ninf_pkt_collect(fix_rx_outs[i]);
 			fix_rx_outs[i]->cached.cnt = fix_rx_outs[i]->cached.idx;
+			printc("\textra flush\n");
 			eos_pkt_send_flush(fix_rx_outs[i]);
 			fix_rx_outs[i]->cached.cnt = EOS_PKT_PER_ENTRY;;
-		}
+		}*/
 		i = (i+1) % EOS_MAX_FLOW_NUM;
 
 		//start = ps_tsc();
@@ -422,11 +434,11 @@ ninf_rx_init()
 	minor_core_id = 0;
 	rx_drop_cnt = 0;
 	global_chain = NULL;
-	dl_tbl[0] = (unsigned long long)1000 * (unsigned long long)500 * (unsigned long long)2700;
-	ninf_ft_init(&ninf_ft, EOS_MAX_CHAIN_NUM, sizeof(struct eos_ring *));
+	dl_tbl[0] = (unsigned long long)1000 * (unsigned long long)2 * (unsigned long long)2700;
+	//ninf_ft_init(&ninf_ft, EOS_MAX_CHAIN_NUM, sizeof(struct eos_ring *));
 	for (i = 1; i < EOS_MAX_FLOW_NUM; i++) {
 		//dl_tbl[i] = (i*dl_tbl[i-1]) / (i+1);
-		temp = i / 12;
-		dl_tbl[i] = dl_tbl[i-1] + (unsigned long long)1000 * (unsigned long long)10 * (unsigned long long)temp;
+		temp = i / 24;
+		dl_tbl[i] = dl_tbl[i-1] + (unsigned long long)1000 * (unsigned long long)2700 * (unsigned long long)temp;
 	}
 }

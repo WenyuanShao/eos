@@ -580,7 +580,7 @@ __alloc_mem_cap(struct cos_compinfo *ci, cap_t ct, vaddr_t *kmem, capid_t *cap)
 }
 
 static thdcap_t
-__cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, thdclosure_index_t init_data)
+__cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, thdclosure_index_t init_data, thdid_t thdid)
 {
 	vaddr_t kmem;
 	capid_t cap;
@@ -593,10 +593,28 @@ __cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, thdclosure_index_t init
 	assert(!(init_data & ~((1 << 16) - 1)));
 	/* TODO: Add cap size checking */
 	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_THDACTIVATE, (init_data << 16) | cap,
-	                __compinfo_metacap(ci)->mi.pgtbl_cap, kmem, comp))
+	                (__compinfo_metacap(ci)->mi.pgtbl_cap << 16) | comp, kmem, thdid))
 		BUG();
 
 	return cap;
+}
+
+/* 
+ * We're doing the thread id allocation here. The kernel initially
+ * allocates N threads, one per core, and uses the coreid + 1 as the
+ * thread's id. Thus, we want to start our thread ids at NUM_CPU + 2.
+ */
+unsigned long __thdid_alloc = NUM_CPU + 2;
+
+thdid_t
+cos_thd_id_alloc(void)
+{
+  unsigned long id = ps_faa(&__thdid_alloc, 1);
+  thdid_t assignment = (thdid_t)id;
+
+  assert((unsigned long)assignment == id);
+
+  return assignment;
 }
 
 #include <cos_thd_init.h>
@@ -604,19 +622,22 @@ __cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, thdclosure_index_t init
 thdcap_t
 cos_thd_alloc_ext(struct cos_compinfo *ci, compcap_t comp, thdclosure_index_t idx)
 {
+  thdid_t thdid = cos_thd_id_alloc();
+
 	if (idx < 1) return 0;
 
-	return __cos_thd_alloc(ci, comp, idx);
+	return __cos_thd_alloc(ci, comp, idx, thdid);
 }
 
 thdcap_t
 cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, cos_thd_fn_t fn, void *data)
 {
 	int      idx = cos_thd_init_alloc(fn, data);
+	thdid_t  thdid = cos_thd_id_alloc();
 	thdcap_t ret;
 
 	if (idx < 1) return 0;
-	ret = __cos_thd_alloc(ci, comp, idx);
+	ret = __cos_thd_alloc(ci, comp, idx, thdid);
 	if (!ret) cos_thd_init_free(idx);
 
 	return ret;
@@ -625,7 +646,9 @@ cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, cos_thd_fn_t fn, void *da
 thdcap_t
 cos_initthd_alloc(struct cos_compinfo *ci, compcap_t comp)
 {
-	return __cos_thd_alloc(ci, comp, 0);
+	thdid_t thdid = cos_thd_id_alloc();
+
+	return __cos_thd_alloc(ci, comp, 0, thdid);
 }
 
 captblcap_t

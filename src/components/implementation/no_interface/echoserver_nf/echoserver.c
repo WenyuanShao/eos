@@ -15,10 +15,13 @@ static u16_t tx_port; // 443
 static struct ip4_addr ip, mask, gw;
 static struct netif cos_if;
 static vaddr_t shmem_addr;
+static int idx;
 static struct eos_ring *input_ring, *output_ring;
 struct ether_addr eth_src, eth_dst;
+uint16_t ether_type;
 static int eth_copy = 0;
 static int bump_alloc = 0;
+static unsigned long long tcp_start, tcp_end;
 
 struct ip4_hdr {
 	uint8_t  version_ihl;
@@ -60,6 +63,15 @@ enum echoserver_state {
 static struct echoserver_struct echo_conn[EOS_MAX_CONNECTION];
 
 static void
+print_port(struct ether_hdr *dst) {
+	int t = 0;
+	for (t = 0; t < ETHER_ADDR_LEN; t++) {
+		printc("%x__", dst->dst_addr.addr_bytes[t]);
+	}
+	printc("\n");
+}
+
+static void
 ssl_print_pkt(void * pkt, int len) {
 	int i = 0;
 	printc("{ ");
@@ -98,7 +110,7 @@ eos_lwip_tcp_send(struct tcp_pcb *tp, struct echoserver_struct *es)
 	assert(es->p);
 	wr_err = tcp_write(tp, es->p->payload, es->p->len, 1);
 	assert(wr_err == ERR_OK);
-	wr_err = tcp_output(tp);
+	//wr_err = tcp_output(tp);
 
 	if (wr_err == ERR_OK) {
 		es->p = NULL;
@@ -137,8 +149,8 @@ eos_lwip_tcp_write(int id, void *buf, int len)
 	assert(es->tp);
 	wr_err = tcp_write(es->tp, buf, len, 1);
 	assert(wr_err == ERR_OK);
-	wr_err = tcp_output(es->tp);
-	assert(wr_err == ERR_OK);
+	/* wr_err = tcp_output(es->tp); */
+	/* assert(wr_err == ERR_OK); */
 	return len;
 }
 
@@ -148,12 +160,37 @@ static err_t
 eos_echoserver(int id)
 {
 	int len;
+	int spin_time = 0;
+	unsigned long start, end;
 
-	assert(buf);
+	start = ps_tsc();
 	len = eos_lwip_tcp_read(id, &buf, EOS_PKT_MAX_SZ);
 	assert(len > 0);
 
 	// application
+	switch (idx) {
+	case 0:
+	{
+		spin_time = 0;
+		break;
+	}
+	case 1:
+	{
+		spin_time = 4;
+		break;
+	}
+	case 2:
+	{
+		spin_time = 8;
+		break;
+	}
+	}
+
+	end = ps_tsc();
+	while ((end - start) < (unsigned long long)spin_time * (unsigned long long)2700) {
+		__asm__ __volatile__("rep;nop": : : "memory");
+		end = ps_tsc();
+	}
 
 	len = eos_lwip_tcp_write(id, &buf, len);
 	assert(len > 0);
@@ -168,46 +205,27 @@ eos_lwip_tcp_recv(void *arg, struct tcp_pcb *tp, struct pbuf *p, err_t err)
 
 	es = &echo_conn[(int)arg];
 	assert(es);
-	if (p == NULL) {
+	if (unlikely(p == NULL)) {
 		es->state = ES_CLOSING;
-		if (es->p == NULL){
-			eos_lwip_tcp_close(tp, es);
-		} else {
-			assert(0); /* should not take this path */
-			/* eos_lwip_tcp_send(tp, es); */
-		}
-		return ERR_OK;
-	}
-
-	if (err != ERR_OK) {
-		if (es->p) {
-			es->p = NULL;
-		}
-		assert(0);
-		return err;
-	}
-
-	switch (es->state) {
+		assert(es->p == NULL);
+		eos_lwip_tcp_close(tp, es);
+	} else {
+		assert(err == ERR_OK);
+		switch (es->state) {
 		case ES_ACCEPTED:
 			es->state = ES_RECEIVED;
-			assert(!es->p);
-			es->p = p;
-			tcp_recved(tp, p->tot_len);
-			eos_echoserver(es->id);
-			return ERR_OK;
 
 		case ES_RECEIVED:
 			assert(!es->p);
 			es->p = p;
 			tcp_recved(tp, p->tot_len);
 			eos_echoserver(es->id);
-			return ERR_OK;
+			break;
 		default:
 			assert(0);
-			tcp_recved(tp, p->tot_len);
-			es->p = NULL;
-			return ERR_OK;
+		}
 	}
+	return ERR_OK;
 }
 
 static err_t
@@ -250,6 +268,7 @@ eos_lwip_tcp_accept(void *arg, struct tcp_pcb *tp, err_t err)
 	tcp_err(tp, eos_lwip_tcp_err);
 	tcp_recv(tp, eos_lwip_tcp_recv);
 	tcp_sent(tp, eos_lwip_tcp_sent);
+	tcp_nagle_disable(tp);
 
 	ret_err = ERR_OK;
 
@@ -276,12 +295,15 @@ ssl_output(struct netif *ni, struct pbuf *p, const ip4_addr_t *ip)
 	eth_hdr = (struct ether_hdr*)snd_pkt;
 
 	/* generate new ether_hdr*/
+	//printc("!!!!!!!!!!!!!!!!: %d\n", );
 	ether_addr_copy(&eth_src, &eth_hdr->src_addr);
 	ether_addr_copy(&eth_dst, &eth_hdr->dst_addr);
+	eth_hdr->ether_type = ether_type;
 
 	memcpy((snd_pkt + sizeof(struct ether_hdr)), pl, p->len);
-
 	r = eos_pkt_send(output_ring, snd_pkt, len, tx_port);
+	tcp_end = ps_tsc();
+	//printc("\ttcp overhead: %lld\n", tcp_end - tcp_start);
 	assert(!r);
 	return ERR_OK;
 }
@@ -301,9 +323,9 @@ static void
 init_lwip(void)
 {
 	lwip_init();
-	IP4_ADDR(&ip, 10,10,1,1);
+	IP4_ADDR(&ip, 10,10,1,2);
 	IP4_ADDR(&mask, 255,255,255,0);
-	IP4_ADDR(&gw, 10,10,1,1);
+	IP4_ADDR(&gw, 10,10,1,2);
 
 	netif_add(&cos_if, &ip, &mask, &gw, NULL, cos_if_init, ip4_input);
 	netif_set_default(&cos_if);
@@ -342,8 +364,9 @@ cos_net_interrupt(int len, void * pkt)
 	struct pbuf *p;
 	
 	assert(EOS_PKT_MAX_SZ >= len);
-	pl = malloc(len);
-	memcpy(pl, pkt, len);
+	//pl = malloc(len);
+	//memcpy(pl, pkt, len);
+	pl = pkt;
 	pl = (void *)(pl + sizeof(struct ether_hdr));
 	p = pbuf_alloc(PBUF_IP, (len-sizeof(struct ether_hdr)), PBUF_ROM);
 	assert(p);
@@ -374,8 +397,11 @@ ssl_get_packet(int *len, u16_t *port)
 	int err, r = 0;
 	void *pkt;
 
+	//printc("****\n");
 	eos_pkt_collect(input_ring, output_ring);
+	//printc("????\n");
 	pkt = eos_pkt_recv(input_ring, len, port, &err, output_ring);
+	//print_port((struct eth_hdr *)pkt);
 	while (unlikely(!pkt)) {
 		if (err == -EBLOCK) nf_hyp_block();
 		else if (err == -ECOLLET) eos_pkt_collect(input_ring, output_ring);
@@ -386,6 +412,7 @@ ssl_get_packet(int *len, u16_t *port)
 		eth_copy = 1;
 		ether_addr_copy(&eth_hdr->src_addr, &eth_dst);
 		ether_addr_copy(&eth_hdr->dst_addr, &eth_src);
+		ether_type = eth_hdr->ether_type;
 	}
 	return pkt;
 }
@@ -396,9 +423,11 @@ ssl_server_run() {
 	void *pkt;
 	
 	while(1) {
+		//printc("\tget packet...");
 		pkt = ssl_get_packet(&len, &tx_port);
 		assert(pkt);
 		assert(len <= EOS_PKT_MAX_SZ);
+		tcp_start = ps_tsc();
 		if (input_ring->cached.idx == 1) {
 			output_ring->cached.cnt = EOS_PKT_PER_ENTRY + 1;
 		}
@@ -417,6 +446,7 @@ cos_init(void *args)
 {
 	nf_hyp_confidx_get(&conf_file_idx);
 	nf_hyp_get_shmem_addr(&shmem_addr);
+	nf_hyp_nf_idx_get(&idx);
 
 	input_ring  = get_input_ring((void *)shmem_addr);
 	output_ring = get_output_ring((void *)shmem_addr);

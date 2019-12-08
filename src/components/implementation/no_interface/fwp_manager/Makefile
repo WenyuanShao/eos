@@ -3,7 +3,9 @@ COMPONENT=fwp_mng.o
 INTERFACES=
 DEPENDENCIES=
 IF_LIB=
-ADDITIONAL_LIBS=-lcobj_format -lcos_kernel_api -lcos_defkernel_api $(LIBSLRAW) -lsl_thd_static_backend -lsl_mod_fprr -ldpdk
+ADDITIONAL_LIBS=-lcobj_format -lcos_kernel_api -lcos_defkernel_api $(LIBSLRAW) -lsl_thd_static_backend -lsl_mod_edf -ldpdk
+#ADDITIONAL_LIBS=-lcobj_format -lcos_kernel_api -lcos_defkernel_api $(LIBSLRAW) -lsl_thd_static_backend -lsl_mod_edf_bitmap -ldpdk
+#ADDITIONAL_LIBS=-lcobj_format -lcos_kernel_api -lcos_defkernel_api $(LIBSLRAW) -lsl_thd_static_backend -lsl_mod_fprr -ldpdk
 
 include ../../Makefile.subsubdir
 MANDITORY_LIB=simple_stklib.o

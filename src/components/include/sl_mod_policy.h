@@ -8,9 +8,21 @@ struct sl_thd_policy {
 	struct sl_thd  thd;
 	tcap_prio_t    priority;
 	microsec_t     period_usec;
-	cycles_t       period;
+	cycles_t       period, deadline;
+	u64_t          cnt;
+
+	int            prio_idx;
 	struct ps_list list;
 } CACHE_ALIGNED;
+
+/*struct sl_thd_policy {
+	struct sl_thd  thd;
+	tcap_prio_t    priority;
+	microsec_t     period_usec;
+	cycles_t       period, deadline;
+
+	int            prio_idx;
+} CACHE_ALIGNED;*/
 
 static inline struct sl_thd *
 sl_mod_thd_get(struct sl_thd_policy *tp)

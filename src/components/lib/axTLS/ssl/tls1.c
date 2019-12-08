@@ -1300,8 +1300,8 @@ int basic_read(SSL *ssl, uint8_t **in_data)
 
     read_len = SOCKET_READ(ssl->client_fd, &buf[ssl->bm_read_index], 
                             ssl->need_bytes-ssl->got_bytes);
-	printf("{%d, %d}       ", ssl->need_bytes, ssl->got_bytes);
-	printf("%x\n\n", &buf[ssl->bm_read_index]);
+	//printf("{%d, %d, %d}       ", ssl->need_bytes, ssl->got_bytes, ssl->client_fd);
+	//printf("%s, %d\n\n", &buf[ssl->bm_read_index], read_len);
     if (read_len < 0) 
     {
 #ifdef WIN32
@@ -1350,7 +1350,7 @@ int basic_read(SSL *ssl, uint8_t **in_data)
         /* do we violate the spec with the message size?  */
         if (ssl->need_bytes > RT_MAX_PLAIN_LENGTH+RT_EXTRA-BM_RECORD_OFFSET)
         {
-            ret = SSL_ERROR_RECORD_OVERFLOW;              
+            ret = SSL_ERROR_RECORD_OVERFLOW;
             goto error;
         }
 
@@ -1497,7 +1497,7 @@ static int do_handshake(SSL *ssl, uint8_t *buf, int read_len)
         add_packet(ssl, buf, hs_len); 
 
 #if defined(CONFIG_SSL_ENABLE_CLIENT)
-	printf("!!!!!!!!!!!!: %d\n", is_client);
+	//printf("!!!!!!!!!!!!: %d\n", is_client);
     ret = is_client ? 
         do_clnt_handshake(ssl, handshake_type, buf, hs_len) :
         do_svr_handshake(ssl, handshake_type, buf, hs_len);

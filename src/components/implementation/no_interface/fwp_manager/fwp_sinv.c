@@ -107,6 +107,7 @@ fwp_clean_chain(struct nf_chain *chain)
 	}
 }
 
+#ifdef EOS_EDF
 static inline int
 __mca_xcpu_op_exit(struct mca_op *op, cpuid_t cpu)
 {
@@ -119,15 +120,17 @@ __mca_xcpu_op_exit(struct mca_op *op, cpuid_t cpu)
 	return ret;
 }
 
-int mca_xcpu_thd_dl_reset(thdid_t tid, cpuid_t cpu)
+int mca_xcpu_thd_dl_reset(thdid_t tid, cpuid_t cpu, vaddr_t shmem_addr)
 {
 	struct mca_op op;
 
 	sl_cs_enter();
 	op.tid = tid;
+	op.shmem_addr = shmem_addr;
 
 	return __mca_xcpu_op_exit(&op, cpu);
 }
+#endif
 
 u32_t
 nf_entry(word_t *ret2, word_t *ret3, int op, word_t arg3, word_t arg4)
@@ -183,13 +186,20 @@ nf_entry(word_t *ret2, word_t *ret3, int op, word_t arg3, word_t arg4)
 	}
 	case NF_BLOCK:
 	{
+#ifdef EOS_EDF
+		vaddr_t shmem_addr;
+		shmem_addr = fwp_shmem_get(token);
 		thdid_t tid = sl_thd_thdid(((struct click_info *)token)->initaep);
 		cpuid_t core_id = ((struct click_info *)token)->core_id;
 
-		//sl_thd_yield(0);
-		ret1 = mca_xcpu_thd_dl_reset(tid, core_id);
+		ret1 = mca_xcpu_thd_dl_reset(tid, core_id, shmem_addr);
 		assert(!ret1);
+		//assert(0);
 		sl_thd_block(0);
+#else
+		assert(0);
+		sl_thd_yield(0);
+#endif
 		break;
 	}
 	default:

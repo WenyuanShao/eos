@@ -508,7 +508,7 @@ sl_cs_exit_schedule_nospin_arg(struct sl_thd *to)
 		}
 	}
 
-	assert(sl_thd_is_runnable(t));
+	//assert(sl_thd_is_runnable(t));
 	sl_cs_exit();
 
 	ret = sl_thd_activate(t, tok);

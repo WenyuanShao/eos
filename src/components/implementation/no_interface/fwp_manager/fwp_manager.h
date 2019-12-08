@@ -47,6 +47,18 @@ struct nf_chain {
 	/* TODO: add mca conn, tx ring for clean up */
 };
 
+/*struct mca_op {
+	thdid_t tid;
+};
+
+#define	MCA_XCPU_RING_SIZE (64 * sizeof(struct mca_op))
+
+struct mca_global {
+	struct ck_ring mca_ring; 
+	
+	struct mca_op mca_rbuf[MCA_XCPU_RING_SIZE];
+} CACHE_ALIGNED;*/
+
 void fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr, 
               unsigned long comp_info_offset, vaddr_t sinv_next_call);
 void fwp_chain_activate(struct nf_chain *chain);

@@ -6,7 +6,7 @@
 #include <cos_types.h>
 
 #define EOS_PKT_MAX_SZ 1600 /*the same as Click*/
-#define EOS_RING_SIZE 128 /* 256 */
+#define EOS_RING_SIZE  128 /* 256 */
 #define EOS_PKT_PER_ENTRY 1 /* 8 */
 #define EOS_PKT_COLLECT_MULTIP 1 /* EOS_PKT_PER_ENTRY */
 #define EOS_RING_MASK (EOS_RING_SIZE - 1)
@@ -26,6 +26,7 @@ typedef enum {
 struct pkt_meta {
 	void *pkt;
 	int pkt_len, port;
+	unsigned long long deadline, arrive;
 }__attribute__((packed));
 
 struct eos_ring;
@@ -42,6 +43,7 @@ struct eos_ring {
 	struct eos_ring_node *ring;  /* read only */
 	void *ring_phy_addr;
 	int coreid, thdid;
+	//int coreid;
 	char pad1[2 * CACHE_LINE - 4*sizeof(struct eos_ring_node *)];
 	int free_head, pkt_cnt;        /* shared head */
 	char pad2[2 * CACHE_LINE - 2*sizeof(int)];
@@ -94,6 +96,8 @@ eos_rings_init(void *rh)
 	output_ring->ring = (struct eos_ring_node *)((char *)output_ring + sizeof(struct eos_ring));
 	output_ring->ring_phy_addr = input_ring->ring_phy_addr + ((char *)output_ring - (char *)rh);
 	output_ring->cached.state = PKT_SENT_READY;
+
+	//input_ring->mca_info = output_ring->mca_info = mca_info_alloc();
 
 	end_of_rings = (char *)output_ring->ring + EOS_RING_SIZE * sizeof(struct eos_ring_node);
 	pkts = (char *)round_up_to_page(end_of_rings);

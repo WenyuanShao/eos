@@ -70,14 +70,7 @@ sl_mod_schedule(void)
 
     t = heap_peek(hs[cpu]);
 	end = ps_tsc();
-	/*if (t!=NULL) {
-		thdid_t tid = sl_mod_gettid(t);
-		printc("$$$$$: %d\n", tid);
-	}*/
-	//printc("$$$: %d\n", heap_size(hs));
-    //printc("schedule= peek idx: %d, deadline: %llu\n", t->prio_idx, t->deadline);
 	sl_per_core[cpu] += (end-start);
-	//sl_ulti_print(cpu);
 	
 	return t;
 }
@@ -92,8 +85,6 @@ sl_mod_block(struct sl_thd_policy *t)
 	assert(t->prio_idx >= 0);
 	
 	heap_remove(hs[cpu], t->prio_idx);
-	//t->priority = t->deadline  = SL_EDF_MAX_DEADLINE;
-	//assert(t->priority <= SL_EDF_DL_LOW);
 	sl_mod_thd_get(t)->state = SL_THD_BLOCKED;
 	debug("block= remove idx: %d, deadline: %llu\n", t->prio_idx, t->deadline);
 	t->prio_idx  = -1;
@@ -115,7 +106,6 @@ sl_mod_wakeup(struct sl_thd_policy *t)
 		assert(t->prio_idx > 0);
 		heap_adjust(hs[cpu], t->prio_idx);
 	}
-	//printc("\twakeup= add idx: %d, deadline: %llu, size: %d\n", t->prio_idx, t->deadline, heap_size(hs[cpu]));
 	end = ps_tsc();
 	sl_per_core[cpu] += (end-start);
 }
@@ -123,7 +113,6 @@ sl_mod_wakeup(struct sl_thd_policy *t)
 void
 sl_mod_yield(struct sl_thd_policy *t, struct sl_thd_policy *yield_to)
 {
-	//printc("yield\n");
 	//assert(0);
 }
 
@@ -138,7 +127,6 @@ sl_mod_thd_create(struct sl_thd_policy *t)
     t->prio_idx    = -1;
     
     assert((heap_size(hs[cpu])+1) < SL_EDF_MAX_THDS);
-    //heap_add(hs, t);
     debug("create= add idx: %d, deadline: %llu\n", t->prio_idx, t->deadline);
 }
 
@@ -162,7 +150,6 @@ sl_mod_thd_param_set(struct sl_thd_policy *t, sched_param_type_t type, unsigned 
 			sl_thd_setprio(sl_mod_thd_get(t), t->priority);
 			t->deadline = SL_EDF_MAX_DEADLINE;
 			assert(t->prio_idx < 0);
-			//heap_adjust(hs, t->prio_idx);
 			heap_add(hs[cpu], t);
 			break;
 		}
@@ -172,42 +159,34 @@ sl_mod_thd_param_set(struct sl_thd_policy *t, sched_param_type_t type, unsigned 
 			sl_thd_setprio(sl_mod_thd_get(t), t->priority);
 			sl_mod_thd_get(t)->state = SL_THD_BLOCKED;
 			t->deadline = SL_EDF_MAX_DEADLINE;
-			//heap_remove(hs, t->prio_idx);
 			assert(t->prio_idx < 0);
 			break;
 		}
 		case SCHEDP_WINDOW:
 		{
-			//t->period_usec = v;
-			//t->period = sl_usec2cyc(t->period_usec);
+			/* t->period_usec = v;
+			 * t->period = sl_usec2cyc(t->period_usec);
 
-			/* first deadline. */
-			//t->deadline = now + t->period;
-			/*
+			 * first deadline.
+			 * t->deadline = now + t->period;
+			 *
 			 * TODO: 1. tcap_prio_t=48bit! mapping 64bit value to 48bit value.
 			 *          (or, can we make cos_switch/cos_tcap_delegate support prio=64bits?).
 			 *       2. wraparound (64bit or 48bit) logic for deadline-based-heap!
+			 *
+			 * t->priority = t->deadline;
+			 * assert(t->priority <= SL_EDF_DL_LOW);
+			 * assert(t->prio_idx > 0);
+			 * heap_adjust(hs, t->prio_idx);
+			 * debug("param_set= adjust idx: %d, deadline: %llu\n", t->prio_idx, t->deadline);
 			 */
-			//t->priority = t->deadline;
-			//assert(t->priority <= SL_EDF_DL_LOW);
-			//assert(t->prio_idx > 0);
-			//heap_adjust(hs, t->prio_idx);
-			//debug("param_set= adjust idx: %d, deadline: %llu\n", t->prio_idx, t->deadline);
 			assert(0);
 			break;
 		}
 		case SCHEDP_DEADLINE:
 		{
-			//t->deadline = v + now;
 			t->deadline = v;
 			t->priority = t->deadline;
-			//assert(t->priority <= SL_EDF_DL_LOW);
-			/*if (t->prio_idx > 0) {
-				heap_adjust(hs, t->prio_idx);
-			} else {
-				heap_add(hs, t);
-			}*/
-			//struct sl_thd_policy *test = heap_peek(hs);
 			debug("param_set= adjust idx: %d, deadline: %llu\n", t->prio_idx, t->deadline);
 			break;
 		}

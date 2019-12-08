@@ -106,26 +106,6 @@ thd_upcall_setup(struct thread *thd, u32_t entry_addr, int option, int arg1, int
 	return;
 }
 
-/*
- * FIXME: We need global thread name space as we use thd_id to access
- * simple stacks. When we have low-level per comp stack free-list, we
- * don't have to use global thread id name space.
- *
- * Update: this is only partially true.  We should really just get rid
- * of this id in the kernel and replace it with a
- * scheduler-configurable variable.  That variable can be the thread
- * id where appropriate, and some other (component-controlled)
- * principal id otherwise.  Given this, the allocator should be in the
- * scheduler, not here.
- */
-extern u32_t free_thd_id;
-static u32_t
-thdid_alloc(void)
-{
-	/* FIXME: thd id address space management. */
-	if (unlikely(free_thd_id >= MAX_NUM_THREADS)) assert(0);
-	return cos_faa((int *)&free_thd_id, 1);
-}
 static void
 thd_rcvcap_take(struct thread *t)
 {
@@ -333,7 +313,7 @@ thd_scheduler_set(struct thread *thd, struct thread *sched)
 }
 
 static int
-thd_activate(struct captbl *t, capid_t cap, capid_t capin, struct thread *thd, capid_t compcap, thdclosure_index_t init_data)
+thd_activate(struct captbl *t, capid_t cap, capid_t capin, struct thread *thd, capid_t compcap, thdclosure_index_t init_data, thdid_t thdid)
 {
 	struct cos_cpu_local_info *cli = cos_cpu_local_info();
 	struct cap_thd            *tc;
@@ -350,7 +330,7 @@ thd_activate(struct captbl *t, capid_t cap, capid_t capin, struct thread *thd, c
 	/* initialize the thread */
 	memcpy(&(thd->invstk[0].comp_info), &compc->info, sizeof(struct comp_info));
 	thd->invstk[0].ip = thd->invstk[0].sp = 0;
-	thd->tid                              = thdid_alloc();
+	thd->tid                              = thdid;
 	thd->refcnt                           = 1;
 	thd->invstk_top                       = 0;
 	thd->cpuid                            = get_cpuid();

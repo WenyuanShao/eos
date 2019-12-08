@@ -77,7 +77,7 @@ sl_mod_thd_delete(struct sl_thd_policy *t)
 { ps_list_rem_d(t); }
 
 void
-sl_mod_thd_param_set(struct sl_thd_policy *t, sched_param_type_t type, unsigned int v)
+sl_mod_thd_param_set(struct sl_thd_policy *t, sched_param_type_t type, unsigned long long v)
 {
 	int cpu = cos_cpuid();
 

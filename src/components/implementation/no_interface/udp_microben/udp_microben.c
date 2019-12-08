@@ -10,6 +10,11 @@
 
 #define ETHER_ADDR_LEN 6
 #define EOS_MAX_CONNECTION 10
+//#ifdef LEN_2
+//#undef LEN_2
+//#endif
+#define LEN_2
+
 static int conf_file_idx = 0;
 static const u16_t port = 0x01BB; // 443
 static u16_t tx_port; // 443
@@ -142,18 +147,21 @@ ssl_output(void *pl, int len)
 }*/
 
 void *
-udp_get_packet(int *len, u16_t *port)
+udp_get_packet(int *len, u16_t *port, unsigned long long *deadline, unsigned long long *arrive)
 {
 	int err, r = 0;
 	void *pkt;
 
 	eos_pkt_collect(input_ring, output_ring);
-	pkt = eos_pkt_recv(input_ring, len, port, &err, output_ring);
+	pkt = eos_pkt_recv_test(input_ring, len, port, deadline, arrive, &err, output_ring);
 	//print_port((struct eth_hdr *)pkt);
 	while (unlikely(!pkt)) {
-		if (err == -EBLOCK) nf_hyp_block();
+		//printc("udp_get_packet: %d\n", err);
+		if (err == -EBLOCK) {
+			nf_hyp_block();
+		}
 		else if (err == -ECOLLET) eos_pkt_collect(input_ring, output_ring);
-		pkt = eos_pkt_recv(input_ring, len, port, &err, output_ring);
+		pkt = eos_pkt_recv_test(input_ring, len, port, deadline, arrive, &err, output_ring);
 	}
 	/*if (unlikely(!eth_copy)) {
 		struct ether_hdr *eth_hdr = (struct ether_hdr *)pkt;
@@ -165,27 +173,47 @@ udp_get_packet(int *len, u16_t *port)
 	return pkt;
 }
 
-void
+int
 udp_spin()
 {
 	unsigned long long start, end;
 	int spin_time = 0;
+	int ret = 0;
 
 	start = ps_tsc();
+	//printc("in udp application\n");
 	switch (idx) {
 	case 0:
 	{
+#ifdef LEN_2
+		spin_time = 10;
+		ret = -1;
+#else
 		spin_time = 25;
+		ret = 0;
+#endif
 		break;
 	}
 	case 1:
 	{
-		spin_time = 4;
+#ifdef LEN_2
+		spin_time = 5;
+		ret = -1;
+#else
+		assert(0);
+		ret = -2;
+#endif
 		break;
 	}
 	case 2:
 	{
-		spin_time = 6;
+#ifdef LEN_2
+		spin_time = 10;
+		ret = 0;
+#else
+		assert(0);
+		ret = -2;
+#endif
 		break;
 	}
 	}
@@ -195,10 +223,10 @@ udp_spin()
 		end = ps_tsc();
 	}
 
-	return;
+	return ret;
 }
 
-int
+void
 udp_process(void *pkt, int pkt_len, int *ret_len)
 {
 	struct ether_hdr *eth_hdr;
@@ -207,13 +235,16 @@ udp_process(void *pkt, int pkt_len, int *ret_len)
 	struct ether_addr eth_temp;
 	uint32_t tmp;
 	uint16_t tmp_udp;
+	int ret = 0;
 
 	eth_hdr = (struct ether_hdr *)pkt;
 	ip_hdr  = (struct ip4_hdr *)(((char *)pkt) + sizeof(struct ether_hdr));
 	udp     = (struct udp_hdr *)(((char *)ip_hdr) + sizeof(struct ip4_hdr));
 	
 	/* reform response */
-	udp_spin();
+	ret = udp_spin();
+	if (ret) return;
+	//if (ret != 0) assert(0);
 
 	ether_addr_copy(&eth_hdr->dst_addr, &eth_temp);
 	ether_addr_copy(&eth_hdr->src_addr, &eth_hdr->dst_addr);
@@ -235,7 +266,7 @@ udp_process(void *pkt, int pkt_len, int *ret_len)
 	ip_hdr->hdr_checksum = ip_cksum((u16_t *)ip_hdr, 20);
 
 	ret_len = pkt_len;
-	return 0;
+	return;
 }
 
 static void
@@ -243,24 +274,25 @@ udp_server_run()
 {
 	int len, r, ret;
 	void *pkt;
-	unsigned long long res_us;
+	unsigned long long res_us, deadline, arrive;
 	
 	while(1) {
-		pkt = udp_get_packet(&len, &tx_port);
+		//printc("udp_server run\n");
+		pkt = udp_get_packet(&len, &tx_port, &deadline, &arrive);
 		assert(pkt);
 		assert(len <= EOS_PKT_MAX_SZ);
 		udp_start = ps_tsc();
-		if (input_ring->cached.idx == 1) {
+		/*if (input_ring->cached.idx == 1) {
 			output_ring->cached.cnt = EOS_PKT_PER_ENTRY + 1;
-		}
+		}*/
 		udp_process(pkt, len, &len);
 		assert(len < EOS_PKT_MAX_SZ);
-		ret = eos_pkt_send(output_ring, pkt, len, tx_port);
-		if (input_ring->cached.idx == input_ring->cached.cnt) {
-			/* the end of this batch */
+		ret = eos_pkt_send_test(output_ring, pkt, len, tx_port, deadline, arrive);
+		/*if (input_ring->cached.idx == input_ring->cached.cnt) {
+			//the end of this batch
 			output_ring->cached.cnt = output_ring->cached.idx;
 			ret = eos_pkt_send_flush_force(output_ring);
-		}
+		}*/
 		udp_end = ps_tsc();
 		res_us = (udp_end-udp_start)/(unsigned long long)2700;
 		//printc("WCET: %llu\n", res_us);
@@ -280,7 +312,7 @@ cos_init(void *args)
 	if (conf_file_idx == -1) {
 		udp_server_run();
 	} else {
-		printc("ssl server pre populate done\n");
+		printc("udp server pre populate done\n");
 		nf_hyp_checkpoint(cos_spd_id());
 		udp_server_run();
 	}

@@ -74,6 +74,7 @@
 #include "lwip/stats.h"
 #include "lwip/ip6.h"
 #include "lwip/ip6_addr.h"
+#include <llprint.h>
 #if LWIP_TCP_TIMESTAMPS
 #include "lwip/sys.h"
 #endif
