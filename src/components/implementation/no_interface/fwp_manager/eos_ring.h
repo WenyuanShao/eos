@@ -7,10 +7,10 @@
 
 #define EOS_PKT_MAX_SZ 1600 /*the same as Click*/
 #define EOS_RING_SIZE  128 /* 256 */
-#define EOS_PKT_PER_ENTRY 1 /* 8 */
+#define EOS_PKT_PER_ENTRY 8 /* 8 */
 #define EOS_PKT_COLLECT_MULTIP 1 /* EOS_PKT_PER_ENTRY */
 #define EOS_RING_MASK (EOS_RING_SIZE - 1)
-#define RING_NODE_PAD_SZ (2*CACHE_LINE - 3*sizeof(short) - sizeof(pkt_states_t) - EOS_PKT_PER_ENTRY*sizeof(struct pkt_meta))
+#define RING_NODE_PAD_SZ (2*CACHE_LINE - 3*sizeof(short) - 2*sizeof(unsigned long long) - sizeof(pkt_states_t) - EOS_PKT_PER_ENTRY*sizeof(struct pkt_meta))
 #define GET_RING_NODE(r, h) ((volatile struct eos_ring_node *)(&((r)->ring[(h)])))
 
 typedef enum {
@@ -26,13 +26,13 @@ typedef enum {
 struct pkt_meta {
 	void *pkt;
 	int pkt_len, port;
-	unsigned long long deadline, arrive;
 }__attribute__((packed));
 
 struct eos_ring;
 
 struct eos_ring_node {
 	short cnt, idx, alloc_idx;
+	unsigned long long deadline, arrive;
 	struct pkt_meta pkts[EOS_PKT_PER_ENTRY];
 	pkt_states_t state;
 	char pad[RING_NODE_PAD_SZ];

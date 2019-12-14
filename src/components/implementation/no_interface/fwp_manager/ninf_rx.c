@@ -300,7 +300,6 @@ ninf_rx_proc_mbuf(struct rte_mbuf *mbuf, int in_port)
 		deadline = arrive + dl_tbl[cid];
 		//printc("      arrive: %llu, deadline: %llu\n", arrive, deadline);
 		r = eos_pkt_send_test(ninf_ring, rte_pktmbuf_mtod(mbuf, void *), rte_pktmbuf_data_len(mbuf), IN2OUT_PORT(in_port), deadline, arrive);
-		//printc("mca_tail: %d", ninf_ring->tail);
 #ifdef EOS_EDF
 		if (likely(r == 0)) {
 			mca_head = mca_dl_enqueue(cid, dl_tbl[cid], ninf_ring->tail);

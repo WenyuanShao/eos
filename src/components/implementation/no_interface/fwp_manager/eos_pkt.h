@@ -99,6 +99,9 @@ eos_pkt_send_test(struct eos_ring *ring, void *pkt, int len, int port, unsigned 
 	int i = 0;
 
 	cache = &(ring->cached);
+	cache->deadline = deadline;
+	cache->arrive   = arrive;
+
 	if (cache->cnt == cache->idx) {
 		r = eos_pkt_send_flush(ring);
 		if (unlikely(r)) return r;
@@ -108,8 +111,8 @@ eos_pkt_send_test(struct eos_ring *ring, void *pkt, int len, int port, unsigned 
 	meta->pkt      = pkt;
 	meta->pkt_len  = len;
 	meta->port     = port;
-	meta->deadline = deadline;
-	meta->arrive   = arrive;
+	//meta->deadline = deadline;
+	//meta->arrive   = arrive;
 	if (cache->cnt == cache->idx) {
 		r = eos_pkt_send_flush(ring);
 		if (r == 0)	i++;
@@ -195,8 +198,8 @@ eos_pkt_recv_test(struct eos_ring *ring, int *len, int *port, unsigned long long
 	ret       = meta->pkt;
 	*len      = meta->pkt_len;
 	*port     = meta->port;
-	*deadline = meta->deadline;
-	*arrive   = meta->arrive;
+	*deadline = cache->deadline;
+	*arrive   = cache->arrive;
 	cache->idx++;
 	/* if (ring->cached.idx < ring->cached.cnt) { */
 	__builtin_prefetch(cache->pkts[cache->idx].pkt, 1);

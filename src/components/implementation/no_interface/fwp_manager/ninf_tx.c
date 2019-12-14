@@ -163,14 +163,14 @@ ninf_tx_flush()
 }
 
 void
-ninf_tx_deadline_check(struct pkt_meta *meta)
+ninf_tx_deadline_check(struct eos_ring_node *scache)
 {
 	unsigned long long now;
 
 	rdtscll(now);
-	latency = latency + (now - meta->arrive);
-	assert(meta->deadline);
-	if (now > meta->deadline) {
+	latency = latency + (now - scache->arrive);
+	assert(scache->deadline);
+	if (now > scache->deadline) {
 		missed ++;
 	}
 }
@@ -191,7 +191,7 @@ ninf_tx_process(struct eos_ring *nf_ring)
 		for(i=0; i<scache.cnt; i++) {
 			ninf_tx_add_pkt(nf_ring, (struct eos_ring_node *)sent, &(scache.pkts[i]));
 #ifdef EOS_EDF
-			ninf_tx_deadline_check(&(scache.pkts[i]));
+			ninf_tx_deadline_check(&scache);
 #endif
 		}
 
@@ -214,7 +214,7 @@ ninf_tx_scan(struct tx_ring **p)
 {
 	struct tx_ring *c;
 	int ret = 0, t;
-	cycles_t now, deadline, arrive;
+	//cycles_t now, deadline, arrive;
 
 	c = ps_load(p);
 	while (c) {

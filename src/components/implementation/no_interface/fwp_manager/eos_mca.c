@@ -205,6 +205,8 @@ mca_transfer(struct eos_ring_node *sn, struct eos_ring_node *rn)
 	const int cnt = sn->cnt-1;
 	struct pkt_meta *rmeta, *smeta;
 
+	rn->deadline = sn->deadline;
+	rn->arrive   = sn->arrive;
 	for(i=0; i<cnt; i++) {
 		__builtin_prefetch(sn->pkts[i+1].pkt, 0);
 		__builtin_prefetch(rn->pkts[i+1].pkt, 1);
@@ -213,16 +215,12 @@ mca_transfer(struct eos_ring_node *sn, struct eos_ring_node *rn)
 		assert(smeta->pkt_len <= EOS_PKT_MAX_SZ);
 		rmeta->pkt_len  = smeta->pkt_len;
 		rmeta->port     = smeta->port;
-		rmeta->deadline = smeta->deadline;
-		rmeta->arrive   = smeta->arrive;
 		mca_copy(rmeta->pkt, smeta->pkt, smeta->pkt_len);
 	}
 	smeta           = &(sn->pkts[cnt]);
 	rmeta           = &(rn->pkts[cnt]);
 	rmeta->pkt_len  = smeta->pkt_len;
 	rmeta->port     = smeta->port;
-	rmeta->deadline = smeta->deadline;
-	rmeta->arrive   = smeta->arrive;
 	mca_copy(rmeta->pkt, smeta->pkt, smeta->pkt_len);
 
 	rn->cnt   = sn->cnt;

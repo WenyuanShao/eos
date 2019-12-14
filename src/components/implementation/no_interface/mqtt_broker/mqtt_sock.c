@@ -4,13 +4,9 @@
 
 #define ETHER_ADDR_LEN 6
 #define EOS_MAX_CONNECTION 10
-//#ifdef LEN_2
-//#undef LEN_2
-//#endif
 #define LEN_2
 
 static int conf_file_idx = 0;
-static const u16_t port = 0x01BB; // 443
 static u16_t tx_port; // 443
 static struct ip4_addr ip, mask, gw;
 static struct netif cos_if;
@@ -22,6 +18,7 @@ uint16_t ether_type;
 static int eth_copy = 0;
 static int bump_alloc = 0;
 unsigned long long udp_start, udp_end;
+int global_flush;
 
 struct udp_hdr {
 	uint16_t src_port;
@@ -70,35 +67,14 @@ enum echoserver_state {
 struct mqtt_buffer {
 	unsigned long long deadline;
 	unsigned long long arrive;
-	struct udp_hdr *mqtt_udp_hdr;
-	struct ip4_hdr *mqtt_ip4_hdr;
 	int raw_len, len;
 	void *raw_pkt;
 	void *pkt;
 };
 
 struct mqtt_buffer mqtt_buffer;
-
-//static struct echoserver_struct echo_conn[EOS_MAX_CONNECTION];
-
-/*static void
-print_port(struct ether_hdr *dst) {
-	int t = 0;
-	for (t = 0; t < ETHER_ADDR_LEN; t++) {
-		printc("%x__", dst->dst_addr.addr_bytes[t]);
-	}
-	printc("\n");
-}
-
-static void
-ssl_print_pkt(void * pkt, int len) {
-	int i = 0;
-	printc("{ ");
-	for (i = 0; i < len; i++) {
-		printc("%02x ", ((uint8_t*)(pkt))[i]);
-	}
-	printc("}\n");
-}*/
+#define MQTT_HDR_LEN (sizeof(struct ether_hdr) + sizeof(struct ip4_hdr) + sizeof(struct udp_hdr))
+char stored_hdr[MQTT_HDR_LEN];
 
 static inline void
 ether_addr_copy(struct ether_addr *src, struct ether_addr *dst)
@@ -130,28 +106,6 @@ ip_cksum(u16_t *ip, int len)
 	return ~sum;
 }
 
-/*static int
-ssl_output(void *pl, int len)
-{
-	void *snd_pkt;
-	int r;
-
-	//pl      = p->payload;
-	//len     = sizeof(struct ether_hdr) + p->len;
-	snd_pkt = eos_pkt_allocate(input_ring, len);
-	eth_hdr = (struct ether_hdr*)snd_pkt;
-
-	// generate new ether_hdr
-	//ether_addr_copy(&eth_src, &eth_hdr->src_addr);
-	//ether_addr_copy(&eth_dst, &eth_hdr->dst_addr);
-	//eth_hdr->ether_type = ether_type;
-
-	memcpy((snd_pkt + sizeof(struct ether_hdr)), pl, p->len);
-	r = eos_pkt_send(output_ring, snd_pkt, len, tx_port);
-	assert(!r);
-	return ERR_OK;
-}*/
-
 static inline void mqtt_ntop(void *addrptr, char *strptr, size_t len)
 {
 	char *p = (char *)addrptr;
@@ -167,15 +121,18 @@ static inline void mqtt_ntop(void *addrptr, char *strptr, size_t len)
 char *
 mqtt_dummy_recvfrom(int sock, char *msg, int buffer_len, int flag, int *len)
 {
-	static char ret[20];
-	int i = 0;
+	static char     ret[20];
+	struct ip4_hdr *ip_hdr;
+	struct udp_hdr *udp_hdr;
 
-	memcpy((void *)msg, mqtt_buffer.pkt, mqtt_buffer.len);
+	ip_hdr = (struct ip4_hdr *)((char *)mqtt_buffer.raw_pkt + sizeof(struct ether_hdr));
+	udp_hdr = (struct udp_hdr *)((char *)ip_hdr + sizeof(struct ip4_hdr));
+
 	assert(buffer_len >= mqtt_buffer.len);
+	memcpy((void *)msg, mqtt_buffer.pkt, mqtt_buffer.len);
 	*len = mqtt_buffer.len;
-	
-	mqtt_ntop(&(mqtt_buffer.mqtt_ip4_hdr->src_addr), ret, 16);
-	sprintf(&ret[9], ":%ld", ntohs(mqtt_buffer.mqtt_udp_hdr->src_port));
+	mqtt_ntop(&(ip_hdr->src_addr), ret, 16);
+	sprintf(&ret[9], ":%ld", ntohs(udp_hdr->src_port));
 	
 	return ret;
 }
@@ -185,43 +142,29 @@ mqtt_dummy_sendto(int sock, char *pkt_buf, int len, int flag, int port, uint32_t
 {
 	void             *raw_pkt = mqtt_buffer.raw_pkt;
 	void             *pkt;
-	struct ether_hdr *eth_hdr;
+	void             *snd_pkt;
 	struct ip4_hdr   *ip_hdr;
 	struct udp_hdr   *udp;
-	struct ether_addr eth_temp;
-	uint32_t          tmp;
-	uint16_t          tmp_udp;
-	int               ret, pkt_len;
+	int               ret, tot_len;
 
-	eth_hdr = (struct ether_hdr *)raw_pkt;
-	ip_hdr  = (struct ip4_hdr *)((char *)raw_pkt + sizeof(struct ether_hdr));
+	tot_len = mqtt_buffer.raw_len - mqtt_buffer.len + len;
+	snd_pkt = eos_pkt_allocate(input_ring, tot_len);
+	memcpy(snd_pkt, stored_hdr, MQTT_HDR_LEN);
+
+	ip_hdr  = (struct ip4_hdr *)((char *)snd_pkt + sizeof(struct ether_hdr));
 	udp     = (struct udp_hdr *)((char *)ip_hdr + sizeof(struct ip4_hdr));
 	pkt     = (void *)((char *)udp + sizeof(struct udp_hdr));
 
-	/* reform header */
-	ether_addr_copy(&eth_hdr->dst_addr, &eth_temp);
-	ether_addr_copy(&eth_hdr->src_addr, &eth_hdr->dst_addr);
-	ether_addr_copy(&eth_temp, &eth_hdr->src_addr);
-
-	tmp              = ip_hdr->src_addr;
-	ip_hdr->src_addr = ip_hdr->dst_addr;
-	ip_hdr->dst_addr = tmp;
-
-	tmp_udp              = udp->src_port;
-	udp->src_port        = udp->dst_port;
-	udp->dst_port        = tmp_udp;
-	udp->dgram_len       = htons(len + sizeof(struct udp_hdr));
-	udp->dgram_cksum     = 0;
-	
 	ip_hdr->total_len    = htons(len + sizeof(struct udp_hdr) + sizeof(struct ip4_hdr));
 	ip_hdr->hdr_checksum = 0;
 	ip_hdr->hdr_checksum = ip_cksum((u16_t *)ip_hdr, 20);
+	ip_hdr->dst_addr     = *dst_addr;
+
+	udp->dst_port        = port;
+	udp->dgram_len       = htons(len + sizeof(struct udp_hdr));
 
 	memcpy(pkt, pkt_buf, len);
-	pkt_len = mqtt_buffer.raw_len - mqtt_buffer.len + len;
-	//printc("\t------>output len: %d, total_len: %d, ip_header_len: %d, dgram_len: %d\n", len, pkt_len, sizeof(struct ip4_hdr), len + sizeof(struct udp_hdr));
-
-	ret = eos_pkt_send_test(output_ring, raw_pkt, pkt_len, tx_port, mqtt_buffer.deadline, mqtt_buffer.arrive);
+	ret = eos_pkt_send_test(output_ring, snd_pkt, tot_len, tx_port, mqtt_buffer.deadline, mqtt_buffer.arrive);
 
 	return 1;
 }
@@ -238,17 +181,11 @@ mqtt_udp_process(void *raw_pkt, int pkt_len, int *ret_len)
 	int ret = 0;
 	void *pkt;
 
-	eth_hdr = (struct ether_hdr *)raw_pkt;
-	ip_hdr  = (struct ip4_hdr *)(((char *)raw_pkt) + sizeof(struct ether_hdr));
+	memcpy(stored_hdr, raw_pkt, MQTT_HDR_LEN);
+	eth_hdr = (struct ether_hdr *)stored_hdr;
+	ip_hdr  = (struct ip4_hdr *)(stored_hdr + sizeof(struct ether_hdr));
 	udp     = (struct udp_hdr *)(((char *)ip_hdr) + sizeof(struct ip4_hdr));
 	
-	mqtt_buffer.mqtt_ip4_hdr = ip_hdr;
-	mqtt_buffer.mqtt_udp_hdr = udp;
-	/* reform response */
-	//ret = udp_spin();
-	//if (ret) return;
-	//if (ret != 0) assert(0);
-	/*
 	ether_addr_copy(&eth_hdr->dst_addr, &eth_temp);
 	ether_addr_copy(&eth_hdr->src_addr, &eth_hdr->dst_addr);
 	ether_addr_copy(&eth_temp, &eth_hdr->src_addr);
@@ -262,14 +199,10 @@ mqtt_udp_process(void *raw_pkt, int pkt_len, int *ret_len)
 	udp->dst_port        = tmp_udp;
 
 	udp->dgram_cksum     = 0;
-	ip_hdr->hdr_checksum = 0;
-	ip_hdr->hdr_checksum = ip_cksum((u16_t *)ip_hdr, 20);
 
-	ret = eos_pkt_send_test(output_ring, raw_pkt, pkt_len, tx_port, mqtt_buffer.deadline, mqtt_buffer.arrive);
-	*/
-	*ret_len = pkt_len - sizeof(struct ether_hdr) - sizeof(struct ip4_hdr) - sizeof(struct udp_hdr);
-	//printc("+++port: %x, %d, %d\n", udp->dst_port, pkt_len, *ret_len);
-	pkt = (void *)((char *)raw_pkt + sizeof(struct ether_hdr) + sizeof(struct ip4_hdr)) + sizeof(struct udp_hdr);
+	*ret_len = pkt_len - MQTT_HDR_LEN;
+
+	pkt = (void *)((char *)raw_pkt + MQTT_HDR_LEN);
 
 	return pkt;
 }
@@ -280,18 +213,31 @@ mqtt_dummy_select(void)
 	int err, r = 0;
 	void *raw_pkt, *pkt;
 	unsigned long long deadline, arrive;
-	int len, raw_len;
+	int len, raw_len, ret;
 
+	if (global_flush) {
+		output_ring->cached.cnt = output_ring->cached.idx;
+		ret = eos_pkt_send_flush_force(output_ring);
+	}
 	eos_pkt_collect(input_ring, output_ring);
-	raw_pkt = eos_pkt_recv_test(input_ring, &raw_len, &port, &deadline, &arrive, &err, output_ring);
-	//print_port((struct eth_hdr *)pkt);
+	raw_pkt = eos_pkt_recv_test(input_ring, &raw_len, &tx_port, &deadline, &arrive, &err, output_ring);
+	int test =  3*sizeof(short) + 2*sizeof(unsigned long long) + sizeof(pkt_states_t) + EOS_PKT_PER_ENTRY*sizeof(struct pkt_meta) - 2*CACHE_LINE;
 	while (unlikely(!raw_pkt)) {
 		if (err == -EBLOCK) {
 			nf_hyp_block();
 		}
 		else if (err == -ECOLLET) eos_pkt_collect(input_ring, output_ring);
-		raw_pkt = eos_pkt_recv_test(input_ring, &raw_len, &port, &deadline, &arrive, &err, output_ring);
+		raw_pkt = eos_pkt_recv_test(input_ring, &raw_len, &tx_port, &deadline, &arrive, &err, output_ring);
 	}
+
+	if (input_ring->cached.idx == 1) {
+		output_ring->cached.cnt = EOS_PKT_PER_ENTRY + 1;
+	}
+
+	if (input_ring->cached.cnt == input_ring->cached.idx)
+		global_flush = 1;
+	else
+		global_flush = 0;
 
 	mqtt_buffer.raw_len      = raw_len;
 	mqtt_buffer.raw_pkt      = raw_pkt;
@@ -302,36 +248,6 @@ mqtt_dummy_select(void)
 	mqtt_buffer.len          = len;
 	return 1;
 }
-
-/*static void
-udp_server_run()
-{
-	int len, r, ret;
-	void *pkt;
-	unsigned long long res_us, deadline, arrive;
-	
-	while(1) {
-		//printc("udp_server run\n");
-		pkt = udp_get_packet(&len, &tx_port, &deadline, &arrive);
-		assert(pkt);
-		assert(len <= EOS_PKT_MAX_SZ);
-		udp_start = ps_tsc();
-		//if (input_ring->cached.idx == 1) {
-		//	output_ring->cached.cnt = EOS_PKT_PER_ENTRY + 1;
-		//}
-		udp_process(pkt, len, &len);
-		assert(len < EOS_PKT_MAX_SZ);
-		ret = eos_pkt_send_test(output_ring, pkt, len, tx_port, deadline, arrive);
-		//if (input_ring->cached.idx == input_ring->cached.cnt) {
-			//the end of this batch
-		//	output_ring->cached.cnt = output_ring->cached.idx;
-		//	ret = eos_pkt_send_flush_force(output_ring);
-		//}
-		udp_end = ps_tsc();
-		res_us = (udp_end-udp_start)/(unsigned long long)2700;
-		//printc("WCET: %llu\n", res_us);
-	}
-}*/
 
 extern int mqtts_broker(void);
 
