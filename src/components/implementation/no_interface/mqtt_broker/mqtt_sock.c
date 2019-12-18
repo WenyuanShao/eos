@@ -3,21 +3,15 @@
 #include <arpa/inet.h>
 
 #define ETHER_ADDR_LEN 6
-#define EOS_MAX_CONNECTION 10
 #define LEN_2
 
 static int conf_file_idx = 0;
 static u16_t tx_port; // 443
-static struct ip4_addr ip, mask, gw;
-static struct netif cos_if;
 static vaddr_t shmem_addr;
 static int idx;
 static struct eos_ring *input_ring, *output_ring;
 struct ether_addr eth_src, eth_dst;
 uint16_t ether_type;
-static int eth_copy = 0;
-static int bump_alloc = 0;
-unsigned long long udp_start, udp_end;
 int global_flush;
 
 struct udp_hdr {
@@ -249,6 +243,42 @@ mqtt_dummy_select(void)
 	return 1;
 }
 
+void
+mqtt_just_send()
+{
+	int len, r, ret, err;
+	void *pkt;
+	unsigned long long deadline, arrive;
+
+	while(1) {
+
+		/*if(global_flush) {
+			output_ring->cached.cnt = output_ring->cached.idx;
+			ret = eos_pkt_send_flush_force(output_ring);
+		}*/
+		eos_pkt_collect(input_ring, output_ring);
+		//output_ring->cached.cnt = input_ring->cached.cnt;
+		pkt = eos_pkt_recv_test(input_ring, &len, &tx_port, &deadline, &arrive, &err, output_ring);
+		while (unlikely(!pkt)) {
+			if (err == -EBLOCK) {
+				nf_hyp_block();
+			} else if (err == -ECOLLET) eos_pkt_collect(input_ring, output_ring);
+			pkt = eos_pkt_recv_test(input_ring, &len, &tx_port, &deadline, &arrive, &err, output_ring);
+		}
+		assert(pkt);
+		assert(len <= EOS_PKT_MAX_SZ);
+		/*if (input_ring->cached.idx == 1) {
+			output_ring->cached.cnt = EOS_PKT_PER_ENTRY + 1;
+		}
+		if (input_ring->cached.cnt = input_ring->cached.idx)
+			global_flush = 1;
+		else
+			global_flush = 0;*/
+
+		ret = eos_pkt_send_test(output_ring, pkt, len, tx_port, deadline, arrive);
+	}
+}
+
 extern int mqtts_broker(void);
 
 void
@@ -259,11 +289,18 @@ cos_init(void *args)
 	nf_hyp_get_shmem_addr(&shmem_addr);
 	nf_hyp_nf_idx_get(&idx);
 
+	assert(idx < 3);
+
 	input_ring  = get_input_ring((void *)shmem_addr);
 	output_ring = get_output_ring((void *)shmem_addr);
 
+	global_flush = 0;
 	if (conf_file_idx == -1) {
-		mqtts_broker();
+		if (idx == 1) {
+			mqtts_broker();
+		} else {
+			mqtt_just_send();
+		}
 	} else {
 		printc("udp server pre populate done\n");
 		nf_hyp_checkpoint(cos_spd_id());

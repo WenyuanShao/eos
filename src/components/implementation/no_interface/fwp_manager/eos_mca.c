@@ -256,7 +256,6 @@ loop:
 		}
 		return -1;
 	}
-	assert(sn->cnt);
 
 	/* fh  = cos_faa(&(dst->free_head), 0); */
 	fh  = dst->free_head;
@@ -265,6 +264,13 @@ loop:
 		//assert(0);
 		return -1;
 	}
+
+	if (sn->cnt == 0) {
+		sn->state = PKT_SENT_DONE;
+		src->mca_head++;
+		return -1;
+	}
+	//assert(sn->cnt);
 	assert(!rn->cnt);
 
 	scache = *sn;
