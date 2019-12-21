@@ -21,13 +21,11 @@ extern word_t nf_entry_rets_inv(invtoken_t cur, int op, word_t arg1, word_t arg2
 long next_nfid = 2, next_chain_id = 0, next_shmem_id = 0, next_template_id = 0;
 
 vaddr_t shmem_addr, heap_ptr;
-
-struct mem_seg *t_seg, *d_seg;
-unsigned long cinfo_offset;
-vaddr_t s_addr, shmem_inv_addr;
+vaddr_t shmem_inv_addr;
 struct mem_seg templates[EOS_MAX_NF_TYPE_NUM];
 static struct nf_chain chains[EOS_MAX_CHAIN_NUM];
 struct click_info chld_infos[EOS_MAX_NF_NUM];
+struct nf_template_info template_nfs[EOS_MAX_NF_TYPE_NUM];
 
 static void
 _alloc_tls(struct cos_compinfo *parent_cinfo_l, struct cos_compinfo *chld_cinfo_l, thdcap_t tc, size_t tls_size)
@@ -133,7 +131,7 @@ _fwp_fork(struct cos_compinfo *parent_cinfo_l, struct click_info *fork_info,
 
 static vaddr_t
 _alias_click(struct cos_compinfo *parent_cinfo, struct cos_compinfo *child_cinfo, 
-	     struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr)
+	     struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr, int template_id)
 {
 	unsigned long offset, text_offset;
 	vaddr_t allocated_data_seg;
@@ -158,7 +156,7 @@ _alias_click(struct cos_compinfo *parent_cinfo, struct cos_compinfo *child_cinfo
 	/*
 	 * Alias the data segment in the new component
 	 */
-	data_sz = d_seg->size;
+	data_sz = template_nfs[template_id].data_seg.size;
 	heap_sz = data_seg->size - data_sz;
 	for (offset = 0; offset < data_sz; offset += PAGE_SIZE) {
 		cos_mem_alias_at(child_cinfo, start_addr + text_offset + offset,
@@ -288,7 +286,7 @@ fwp_fork(struct click_info *chld_info, struct mem_seg *text_seg, struct mem_seg 
  
 	printc("core_id : %d; ", coreid);
 	_fwp_fork(parent_cinfo, chld_info, text_seg, data_seg, ring_seg, conf_file_idx, start_addr);
-	allocated_data_seg = _alias_click(parent_cinfo, child_cinfo, text_seg, data_seg, start_addr);
+	allocated_data_seg = _alias_click(parent_cinfo, child_cinfo, text_seg, data_seg, start_addr, chld_info->template_id);
 	_fwp_fork_cont(parent_cinfo, chld_info, allocated_data_seg, cinfo_offset, coreid);
 	_fwp_for_drop_cap(parent_cinfo);
 	//printc("fork_done\n");
@@ -358,7 +356,7 @@ fwp_allocate_shmem(vaddr_t start_addr)
 
 	shmem_addr = (vaddr_t)cos_page_bump_allocn(boot_cinfo, EOS_MAX_MEMSEGS_NUM * FWP_MEMSEG_SIZE);
 	heap_ptr = round_up_to_pgd_page(shmem_addr + EOS_MAX_MEMSEGS_NUM * FWP_MEMSEG_SIZE);
-	printc("dbg empty %x shmem addr %lx\n", empty_page, shmem_addr);
+	printc("dbg empty %x shmem addr %lx heap_ptr %lx\n", empty_page, shmem_addr, heap_ptr);
 }
 
 void
@@ -401,6 +399,7 @@ fwp_allocate_chain(struct nf_chain *chain, int is_template, int coreid)
 			*last_nf              = new_nf;
 			new_nf->conf_file_idx = -1;
 			new_nf->nf_id         = nfid;
+			new_nf->template_id   = this_nf->template_id;
 			new_nf->nd_thd        = this_nf->nd_thd;
 			new_nf->nd_ring       = this_nf->nd_ring;
 			new_nf->nd_sinv       = this_nf->nd_sinv;
@@ -414,8 +413,10 @@ fwp_allocate_chain(struct nf_chain *chain, int is_template, int coreid)
 	}
 
 	list_for_each_nf(this_nf, chain) {
-		struct mem_seg mem_seg;
+		struct mem_seg mem_seg, *txt_seg;
+		int template_id;
 
+		template_id = this_nf->template_id;
 		if (this_nf->nd_ring) shmemid = next_shmem_id++;
 		else shmemid = last_shmem_id;
 		this_nf->idx = idx++;
@@ -424,10 +425,11 @@ fwp_allocate_chain(struct nf_chain *chain, int is_template, int coreid)
 		this_nf->shmem_addr = (vaddr_t)fwp_get_shmem(shmemid);
 		mem_seg.addr = this_nf->shmem_addr;
 		mem_seg.size = FWP_MEMSEG_SIZE;
-		if (is_template) nf_data_seg = d_seg;
+		if (is_template) nf_data_seg = &(template_nfs[template_id].data_seg);
 		else nf_data_seg = this_nf->data_seg;
+		txt_seg = &(template_nfs[template_id].text_seg);
 		//printc("data_seg: %d\n", d_seg->size);
-		fwp_fork(this_nf, t_seg, nf_data_seg, &mem_seg, this_nf->conf_file_idx, cinfo_offset, s_addr, coreid);
+		fwp_fork(this_nf, txt_seg, nf_data_seg, &mem_seg, this_nf->conf_file_idx, template_nfs[template_id].comp_info_offset, template_nfs[template_id].start_addr, coreid);
 	}
 	if (!is_template) {
 		list_for_each_nf(this_nf, chain) {
@@ -442,9 +444,10 @@ fwp_allocate_chain(struct nf_chain *chain, int is_template, int coreid)
 }
 
 static void
-fwp_init(void)
+fwp_init(vaddr_t start_addr)
 {
-	fwp_allocate_shmem(s_addr);
+	fwp_allocate_shmem(start_addr);
+	memset(chld_infos, 0, sizeof(chld_infos));
 }
 
 static void
@@ -472,6 +475,7 @@ static struct nf_chain *fwp_create_chain_firewall(void); /* create a chain of tw
 static struct nf_chain *fwp_create_chain_multi_tency(int len); /* mutilple mirror nf connect by MCA */
 static struct nf_chain *fwp_create_chain_multi_tency_share(int len); /* a chain with all shared nf */
 static struct nf_chain *fwp_create_chain2(int conf_file1, int conf_file2); /* create a chain of two NFs linked by shmem */
+static struct nf_chain *fwp_create_click_mqtt_chain(int conf_file1); /* create a chain click -> mqtt -> click */
 
 void
 fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
@@ -480,12 +484,8 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 	struct nf_chain *chain;
 	int i, j, tot=0;
 
-	t_seg = text_seg;
-	d_seg = data_seg;
-	cinfo_offset = comp_info_offset;
-	s_addr = start_addr;
 	shmem_inv_addr = sinv_next_call;
-	fwp_init();
+	fwp_init(start_addr);
 	mca_init(CURR_CINFO());
 	ninf_init();
 	cos_faa(&init_core_done, 1);
@@ -495,7 +495,9 @@ fwp_test(struct mem_seg *text_seg, struct mem_seg *data_seg, vaddr_t start_addr,
 
 	/* chain = fwp_create_chain_bridge(); */
 	/* chain = fwp_create_chain_firewall(); */
-	chain = fwp_create_chain_multi_tency(1);
+	//chain = fwp_create_chain_multi_tency(1);
+	chain = fwp_create_click_mqtt_chain(0);
+	//chain = fwp_create_chain_multi_tency(3);
 	/* chain = fwp_create_chain_multi_tency_share(2); */
 	fwp_allocate_chain(chain, 1, 0);
 
@@ -737,6 +739,39 @@ fwp_create_chain_multi_tency_share(int len)
 	nf1->next = nf2;
 	nf2->next = NULL;
 	ret_chain->last_nf = nf2;
+
+	return ret_chain;
+}
+
+static struct nf_chain *
+fwp_create_click_mqtt_chain(int conf_file1)
+{
+	int nfid, ncid, shmemid;
+	struct click_info *nf1, *nf2, *nf3;
+	struct nf_chain *ret_chain;
+
+	ncid = next_chain_id++;
+	ret_chain = &chains[ncid];
+	ret_chain->chain_id = ncid;
+	ret_chain->tot_nf = 3;
+	ret_chain->active_nf = 0;
+	ret_chain->next = NULL;
+
+	nf1 = __copy_nf(conf_file1);
+	nf2 = __copy_nf(conf_file1);
+	nf3 = __copy_nf(conf_file1);
+
+	nf1->next = nf2;
+	nf2->next = nf3;
+	nf1->idx = 0;
+	nf2->idx = 1;
+	nf3->idx = 2;
+	nf1->template_id = 0;
+	nf2->template_id = 1;
+	nf3->template_id = 0;
+
+	ret_chain->first_nf = nf1;
+	ret_chain->last_nf = nf3;
 
 	return ret_chain;
 }

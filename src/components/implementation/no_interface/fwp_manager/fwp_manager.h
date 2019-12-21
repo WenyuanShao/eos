@@ -47,6 +47,14 @@ struct nf_chain {
 	/* TODO: add mca conn, tx ring for clean up */
 };
 
+struct nf_template_info {
+    struct mem_seg text_seg;
+    struct mem_seg data_seg;
+    vaddr_t start_addr;
+    unsigned long comp_info_offset;
+    vaddr_t sinv_next_call;
+};
+
 /*struct mca_op {
 	thdid_t tid;
 };

@@ -5,7 +5,7 @@
 #include <consts.h>
 #include <cos_types.h>
 
-#define EOS_PKT_MAX_SZ 1600 /*the same as Click*/
+#define EOS_PKT_MAX_SZ 256 /*the same as Click*/
 #define EOS_RING_SIZE  128 /* 256 */
 #define EOS_PKT_PER_ENTRY 8 /* 8 */
 #define EOS_PKT_COLLECT_MULTIP 1 /* EOS_PKT_PER_ENTRY */
@@ -85,6 +85,8 @@ eos_rings_init(void *rh)
 	int i, j;
 
 	assert(((unsigned long)rh & (~PAGE_MASK)) == 0);
+
+	assert(2*CACHE_LINE > (3*sizeof(short) + 2*sizeof(unsigned long long) + sizeof(pkt_states_t) + EOS_PKT_PER_ENTRY*sizeof(struct pkt_meta)));
 
 	input_ring = get_input_ring(rh);
 	memset(input_ring, 0, sizeof(struct eos_ring));

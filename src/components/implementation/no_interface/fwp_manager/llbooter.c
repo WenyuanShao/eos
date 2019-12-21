@@ -36,6 +36,7 @@ struct component_init_str {
 
 struct component_init_str *init_args;
 volatile int init_core_done = 0, rx_init_done = 0;
+extern struct nf_template_info template_nfs[EOS_MAX_NF_TYPE_NUM];
 
 static void
 boot_find_cobjs(struct cobj_header *h, int n)
@@ -444,6 +445,29 @@ boot_comp_capinfo_init(void)
 }
 
 static void
+fwp_prepare(int id, vaddr_t sinv_next_call)
+{
+       struct cos_compinfo *booter_cinfo;
+       vaddr_t start_addr;
+       spdid_t spdid;
+       struct comp_cap_info *spdinfo;
+       struct nf_template_info *tnf;
+
+       booter_cinfo          = boot_spd_compinfo_get(0);
+       spdid                 = hs[id]->id;
+       spdinfo               = boot_spd_compcapinfo_get(spdid);
+       tnf                   = &template_nfs[id];
+       tnf->start_addr       = cobj_sect_get(hs[id], 0)->vaddr;
+       tnf->sinv_next_call   = sinv_next_call;
+       tnf->comp_info_offset = comp_info_offset[spdid];
+       tnf->text_seg.addr        = spdinfo->vaddr_mapped_in_booter;
+       tnf->text_seg.size        = end_rodata[spdid] - spdinfo->vaddr_mapped_in_booter;
+       tnf->data_seg.addr        = round_up_to_page(end_rodata[spdid]);
+       tnf->data_seg.size        = booter_cinfo->vas_frontier - tnf->data_seg.addr;
+}
+
+
+static void
 fwp_prepare_and_test(vaddr_t start_addr, spdid_t spdid, vaddr_t sinv_next_call)
 {
        struct cos_compinfo *booter_cinfo = boot_spd_compinfo_get(0);
@@ -528,7 +552,18 @@ cos_init(void)
 	boot_create_cap_system(&sinv_next[h->id]);
 	boot_child_info_print();
 
-    fwp_prepare_and_test(cobj_sect_get(h, 0)->vaddr, h->id, sinv_next[h->id]);
+	/*
+	   Here we pass a couple of components to fwp manager. fwp manger will first create a thread in those
+	   components. The thread goes into cos_init and invoke checkpoint in fwp_mgr. During the checkpoint,
+	   fwp_mgr copy the data seg and recorder the copied address in predetermined location. The location
+	   is setup as a token when allocating sinv for the component. After the checkpoint, the thread switch
+	   to original fwp booter thread, which continue fork more component based on the copied data seg.
+	*/
+	int i;
+	for(i=0; i<num_cobj; i++) {
+		fwp_prepare(i, sinv_next[h->id]);
+	}
+	fwp_prepare_and_test(cobj_sect_get(hs[num_cobj-1], 0)->vaddr, h->id, sinv_next[h->id]);
 
 	boot_done();
 }
