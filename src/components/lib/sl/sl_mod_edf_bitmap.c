@@ -14,10 +14,11 @@
 //#define SL_EDF_SIZE         SL_EDF_MAX_DEADLINE + 1
 #define SL_EDF_DL_LOW       TCAP_PRIO_MIN
 #define SL_WINDOW_SZ        95
+#define INTERVAL_SZ         2700 * 20
 
 struct base_info {
 	unsigned long long base;
-	int                curr_sched;
+	int                enqueued;
 	int                to_sched;
 };
 
@@ -88,32 +89,36 @@ sl_mod_load(int cpu)
 {
 	int ret = 0;
 	unsigned long long pos;
+	unsigned long long now;
 	struct sl_thd_policy *t;
 
 	//if (ps_list_head_empty(&to_sched[cpu])) return 0;
-	assert(base_info[cpu].curr_sched == 0);
+	assert(base_info[cpu].enqueued == 0);
 	if (base_info[cpu].to_sched == 0)	return 0;
-	base_info[cpu].base += (2700 * SL_WINDOW_SZ);
+	rdtscll(now);
+	//printc("now: %lld\n", now);
+	base_info[cpu].base = now;
 
 	ps_list_foreach_d(&to_sched[cpu], t) {
-		pos = (t->deadline - base_info[cpu].base)/2700;
-		assert(pos >= 0);
+		assert(t->deadline > base_info[cpu].base);
+		pos = (t->deadline - base_info[cpu].base)/INTERVAL_SZ;
 		if (pos < SL_WINDOW_SZ) {
 			ps_list_rem_d(t);
 			base_info[cpu].to_sched--;
 			ps_list_head_add_d(&threads[cpu][pos], t);
-			base_info[cpu].curr_sched++;
+			base_info[cpu].enqueued++;
 
 			__set_bit(bitmap[cpu], (int)pos);
 			ret ++;
+			printc("\tload success! pos: %d: base: %llu, enqueued: %d\n", (int)pos, base_info[cpu].base, base_info[cpu].enqueued);
 		}
-		printc("\tpos: %d: base: %llu\n", (int)pos, base_info[cpu].base);
+		printc("\tfailed! pos: %d, base: %d, enqueued: %d, to_sched: %d\n", (int)pos, base_info[cpu].base, base_info[cpu].enqueued, base_info[cpu].to_sched);
 	}
-	if (ret == 0) {
-		pos = (t->deadline - base_info[cpu].base)/2700;
+	/*if (ret == 0) {
+		pos = (t->deadline - base_info[cpu].base)/INTERVAL_SZ;
 		//printc("error: %d\n", (int)pos);
 		assert(0);
-	}
+	}*/
 	//assert(ret > 0);
 	return ret;
 }
@@ -122,15 +127,30 @@ void
 sl_mod_execution(struct sl_thd_policy *t, cycles_t cycles)
 { }
 
+unsigned long long previous[NUM_CPU];
+int print_cnt;
+
 struct sl_thd_policy *
 sl_mod_schedule(void)
 {
     int first, cpu = cos_cpuid(), ret;
     struct sl_thd_policy *t;
-	unsigned long long start, end;
+	unsigned long long start, end, now;
 	int tid;
-
+	start = ps_tsc();
+	if (cpu == 4) {
+		rdtscll(now);
+		//printc("\tgap: %lluus\n", (now-previous[cpu])/2700);
+		rdtscll(previous[cpu]);
+		print_cnt++;
+	}
 	if ((bitmap[cpu][0]|bitmap[cpu][1]|bitmap[cpu][2]) == 0) {
+		assert(bitmap[cpu][0] == 0);
+		assert(bitmap[cpu][1] == 0);
+		assert(bitmap[cpu][2] == 0);
+		if (base_info[cpu].to_sched == 0) {
+			return NULL;
+		}
 		ret = sl_mod_load(cpu);
 		if (!ret) return NULL;
 	}
@@ -138,9 +158,13 @@ sl_mod_schedule(void)
 	if (!ps_list_head_empty(&threads[cpu][first])) {
 		t = ps_list_head_first_d(&threads[cpu][first], struct sl_thd_policy);
 		tid = sl_mod_gettid(t);
+		end = ps_tsc();
+		//printc("schedlue latency: %llu\n", end-start);
 		//printc("schedule: %d\n", tid);
 		return t;
 	}
+	//if (cpu == 4) {
+	//}
 
 	return NULL;
 }
@@ -152,38 +176,42 @@ sl_mod_block(struct sl_thd_policy *t)
 	unsigned long long pos;
 	
 	ps_list_rem_d(t);
-	pos = (t->deadline - base_info[cpu].base)/2700;
+	pos = (t->deadline - base_info[cpu].base)/INTERVAL_SZ;
 	assert(pos >= 0);
 	assert(pos < SL_WINDOW_SZ);
 
 	if (ps_list_head_empty(&threads[cpu][(int)pos])) {
 		__clear_bit(bitmap[cpu], (int)pos);
-		base_info[cpu].curr_sched--;
-		if (base_info[cpu].curr_sched == 0)	base_info[cpu].base = 0;
+		base_info[cpu].enqueued--;
+		//if (base_info[cpu].enqueued == 0)	base_info[cpu].base = 0;
 	}
+	sl_mod_thd_get(t)->state = SL_THD_BLOCKED;
+	//printc("block; enqueued: %d, to_sched: %d\n", base_info[cpu].enqueued, base_info[cpu].to_sched);
 }
 
 void
 sl_mod_wakeup(struct sl_thd_policy *t)
 {
 	int cpu = cos_cpuid();
-	unsigned long long pos;
+	unsigned long long pos, now;
 
 	ps_list_rem_d(t);
 	if (base_info[cpu].base == 0) {
-		assert(base_info[cpu].curr_sched == 0);
+		assert(base_info[cpu].enqueued == 0);
 		assert(base_info[cpu].to_sched == 0);
 		base_info[cpu].base = t->deadline;
 	}
-	pos = (t->deadline - base_info[cpu].base)/2700;
+	rdtscll(now);
+	pos = (t->deadline - now)/INTERVAL_SZ;
 	assert(pos >= 0);
 	if (pos < SL_WINDOW_SZ) {
 		ps_list_head_add_d(&threads[cpu][pos], t);
-		base_info[cpu].curr_sched++;
+		base_info[cpu].enqueued++;
 		__set_bit(bitmap[cpu], pos);
 	} else {
 		ps_list_head_add_d(&to_sched[cpu], t);
 		base_info[cpu].to_sched++;
+		printc("wakeup and add task into to_sched list: %d\n", pos);
 	}
 
 }
@@ -215,7 +243,7 @@ sl_mod_thd_delete(struct sl_thd_policy *t)
 
 	if (ps_list_head_empty(&threads[cpu][t->deadline])) {
 		__clear_bit(bitmap[cpu], t->deadline);
-		base_info[cpu].curr_sched --;
+		base_info[cpu].enqueued --;
 	}
 }
 
@@ -301,4 +329,5 @@ sl_mod_init(void)
 		ps_list_head_init(&threads[cpu][i]);
 	}
 	ps_list_head_init(&to_sched[cpu]);
+	print_cnt = 0;
 }
