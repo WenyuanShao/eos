@@ -62,10 +62,14 @@ static inline void
 __check_clear(int l_pos)
 {
 	int cpu = cos_cpuid();
-	int bm_pos = (l_pos + base_info[cpu].head)&(SL_WINDOW_SZ - 1);
+	int bm_pos = 0;
 
-	assert(pos >= 0 & pos < 1024);
+	assert(l_pos >= 0 & l_pos < 1024);
 
+	if (l_pos >= base_info[cpu].head)
+		bm_pos = l_pos - base_info[cpu].head;
+	else
+		bm_pos = l_pos - base_info[cpu].head + SL_WINDOW_SZ;
 	if (ps_list_head_empty(&threads[cpu][l_pos])) {
 		__clear_bit(&bm_lv2[cpu][bm_pos/SL_WORD_SZ], bm_pos%SL_WORD_SZ);
 		if (!bm_lv2[cpu][pos/SL_WORD_SZ])
@@ -142,6 +146,7 @@ sl_mod_schedule(void)
 	lv1_idx = __find_first_bit(bm_lv1[cpu]);
 	lv2_idx = __find_first_bit(bm_lv2[cpu][lv1_idx]);
 	idx = lv1_idx*SL_WORD_SZ + lv2_idx + base_info[cpu].head;
+	idx &= (SL_WINDOW_SZ-1);
 	
 	if (!ps_list_head_empty(&threads[cpu][idx])) {
 		thd = ps_list_head_first_d(&threads[cpu][idx], struct sl_thd_policy);
