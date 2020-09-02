@@ -6,17 +6,9 @@
 
 #define EOS_EDF
 
-/*
-#ifdef EOS_EDF
-#undef EOS_EDF
-#endif
-*/
-
-/*struct mca_info {
-	int deadline;
-	int offset;
-	int thdid;
-};*/
+//#ifdef EOS_EDF
+//#undef EOS_EDF
+//#endif
 
 struct mca_conn {
 	struct eos_ring *src_ring;
@@ -34,20 +26,24 @@ struct mca_op {
 	vaddr_t shmem_addr;
 };
 
+enum dl_ring_state {
+	DL_RING_FREE = 0,
+	DL_RING_USED,
+};
+
 struct dl {
-	cycles_t arrive;
+	int      state;
 	cycles_t dl;
 };
 
 struct mca_info {
-	cycles_t     deadline;
-	int          offset;
-	int          info_idx;
-	int          used;
-	int          empty_flag;
-	struct dl    dl_ring[EOS_RING_SIZE+1];
-	int          head;
-	int          tail;
+	cycles_t            deadline;
+	int                 info_idx;
+	int                 used;
+	int                 empty_flag;
+	int                 head;
+	int                 tail;
+	struct dl          *dl_ring;
 };
 
 #define MCA_XCPU_RING_SIZE (64 * sizeof(struct mca_op))
@@ -57,7 +53,6 @@ struct mca_global {
 	struct mca_op  mca_rbuf[NUM_CPU][MCA_XCPU_RING_SIZE];
 } CACHE_ALIGNED;
 
-//struct mca_conn *mca_conn_create(struct eos_ring *src, struct eos_ring *dst, int src_thdid, int dst_thdid, cycles_t deadline);
 struct mca_conn *mca_conn_create(struct eos_ring *src, struct eos_ring *dst, int src_thdid, int dst_thdid);
 void mca_conn_free(struct mca_conn *conn);
 void mca_init(struct cos_compinfo *parent_cinfo);

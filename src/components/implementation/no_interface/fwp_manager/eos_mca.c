@@ -9,57 +9,21 @@
 
 #define MCA_CONN_MAX_NUM 2048
 /* 100us */
-#define OFFSET           0
+#define OFFSET           50
 
 #define MCA_BURST_CNT    (32/EOS_PKT_PER_ENTRY)
 
 static struct mca_conn *fl, *lh;
-static struct mca_info global_info[MCA_CONN_MAX_NUM + EOS_MAX_CHAIN_NUM];
-int info_idx = 0;
-struct mca_global mca_global_data;
-
-/*static inline int
-__mca_xcpu_op_exit(struct mca_op *op, cpuid_t cpu)
-{
-    int ret = 0;
-    if (ck_ring_enqueue_mpsc_mca(__mca_get_ring(cpu), __mca_get_ring_buf(cpu), op) != true) {
-        ret = -ENOMEM;
-        assert(0);
-    }
-    sl_cs_exit();
-    return ret;
-}
-
-//extern struct click_info;
-
-int
-mca_xcpu_thd_dl_reset(thdid_t tid, cpuid_t cpu)
-{
-	struct mca_op op;
-
-	sl_cs_enter();
-
-	op.tid = tid;
-	//printc("\t^^^^^^: reset in core %d, tid: %d\n", cpu, tid);
-	return __mca_xcpu_op_exit(&op, cpu);
-}*/
+static volatile struct mca_info global_info[MCA_CONN_MAX_NUM + EOS_MAX_CHAIN_NUM];
+static volatile struct dl global_dl[MCA_CONN_MAX_NUM][EOS_RING_SIZE];
 
 cycles_t
 mca_info_dl_get(int cid)
 {
-	struct mca_info *ret;
+	volatile struct mca_info *ret;
 
 	ret = &global_info[cid];
 	return ret->dl_ring[ret->tail & EOS_RING_MASK].dl;
-}
-
-cycles_t
-mca_info_recv_get(int cid)
-{
-	struct mca_info *ret;
-
-	ret = &global_info[cid];
-	return ret->dl_ring[ret->tail & EOS_RING_MASK].arrive;
 }
 
 int
@@ -85,26 +49,30 @@ mca_xcpu_process(void)
 	return num;
 }
 
-struct mca_info *
+volatile struct mca_info *
 mca_info_get(int tid)
 {
-	struct mca_info *ret;
+	volatile struct mca_info *ret;
 
 	assert(tid < MCA_CONN_MAX_NUM + EOS_MAX_CHAIN_NUM);
 
 	ret = &global_info[tid];
 	ret->info_idx = tid;
 	if (tid < EOS_MAX_CHAIN_NUM) {
+		assert(!ret->used);
+		assert(ret->head == 0);
+		assert(ret->tail == 0);
 		ret->head = ret->tail = 0;
 		ret->info_idx = tid;
 		ret->deadline = EOS_MAX_DEADLINE;
-		assert(!ret->used);
+		ret->dl_ring  = global_dl[tid];
 		ret->used = 1;
 		return ret;
 	}
 	if (!ret->used) {
 		ret->info_idx = tid;
 		ret->deadline = EOS_MAX_DEADLINE;
+		ret->dl_ring  = NULL;
 		ret->used = 1;
 	}
 	return ret;
@@ -113,53 +81,22 @@ mca_info_get(int tid)
 int
 mca_dl_enqueue(int cid, cycles_t deadline, int test)
 {
-	int head, tail;
-	cycles_t arrive = 0;
-	rdtscll(arrive);
+	volatile int head, tail;
+	cycles_t arrive = 0, now = 0;
 
-	if (cid > EOS_MAX_CHAIN_NUM) {
-		printc("cid: %d\n", cid);
-	}
 	assert(cid < EOS_MAX_CHAIN_NUM);
 
-	struct mca_info* curr_info = &global_info[cid];
-	assert((curr_info->head - curr_info->tail) <= EOS_RING_SIZE + 1);
-	curr_info->dl_ring[curr_info->head & EOS_RING_MASK].dl = deadline + arrive;
-	curr_info->dl_ring[curr_info->head & EOS_RING_MASK].arrive = arrive;
-	//curr_info->deadline = curr_info->dl_ring[curr_info->tail & EOS_RING_MASK].dl;
+	volatile struct mca_info* curr_info = &global_info[cid];
+	assert(curr_info->dl_ring);
 	head = cos_faa(&(curr_info->head), 1);
-	tail = cos_faa(&(curr_info->tail), 0);
-	//printc("\tdl_head: %d\n", head+1);
-	/*if (test != head + 1) {
-		printc("test: %d, head: %d\n", test, head+1);
-	}
-	assert(test == head+1);*/
-	/* head + 1 - tail <= 127 */
-	if (head - tail > 127) {
-		printc("head: %d, tail: %d, cid: %d, cid-MAX_CHAIN: %d\n", head+1, tail, cid, cid-EOS_MAX_CHAIN_NUM);
-		assert(0);
-	}
-	//assert(head - tail < 127);
+	assert((head - curr_info->tail) <= EOS_RING_SIZE + 1);
+
+	curr_info->dl_ring[head & EOS_RING_MASK].dl = deadline;
+	assert(curr_info->dl_ring[head & EOS_RING_MASK].dl);
+
+	curr_info->dl_ring[head & EOS_RING_MASK].state = DL_RING_USED;
 
 	return curr_info->head;
-}
-
-void
-mca_debug_print(int cid)
-{
-	unsigned long long curr_time;
-	assert(cid < EOS_MAX_CHAIN_NUM);
-	rdtscll(curr_time);
-	struct mca_info* curr_info = &global_info[cid];
-	printc("ring idx: %d\n", cid);
-	printc("      deadline:  %llu\n", curr_info->dl_ring[curr_info->tail].dl);
-	printc("      curr_time: %llu\n", curr_time);
-	printc("      arrive:    %llu\n", curr_info->dl_ring[curr_info->tail].arrive);
-	printc("      head_ori: %u, head: %u, tail_ori: %u, tail: %u\n",
-					curr_info->head,
-					(curr_info->head & EOS_RING_MASK),
-					curr_info->tail,
-					(curr_info->tail & EOS_RING_MASK));
 }
 
 static inline void
@@ -232,28 +169,26 @@ static inline int
 mca_process(struct mca_conn *conn, int burst)
 {
 	struct eos_ring *src, *dst, *dst_output;
+	struct mca_info *dst_info, *src_info;
+	struct dl *dl_ring;
 	volatile struct eos_ring_node *rn, *sn;
 	struct eos_ring_node rcache, scache;
 	int fh, r = 0;
 	thdid_t dst_tid;
-	unsigned long long start, end;
+	unsigned long long start, end, now;
 	int pkt_cnt, ret, dl_tail, dl_head, cnter=0;
 
-loop:
 	start = ps_tsc();
+loop:
 	src = conn->src_ring;
 	dst = conn->dst_ring;
 	sn  = GET_RING_NODE(src, src->mca_head & EOS_RING_MASK);
+	dl_ring = src_info->dl_ring;
+	dl_tail = src_info->tail;
 #ifdef EOS_EDF
 	int num = mca_xcpu_process();
 #endif
 	if (unlikely(sn->state != PKT_SENT_READY)) {
-		//assert(0);
-		cnter++;
-		if (cnter > 1) {
-			printc("cnter: %d\n", cnter);
-			assert(0);
-		}
 		return -1;
 	}
 
@@ -261,7 +196,6 @@ loop:
 	fh  = dst->free_head;
 	rn  = GET_RING_NODE(dst, fh & EOS_RING_MASK);
 	if (unlikely(rn->state != PKT_FREE)) {
-		//assert(0);
 		return -1;
 	}
 
@@ -270,26 +204,36 @@ loop:
 		src->mca_head++;
 		return -1;
 	}
-	//assert(sn->cnt);
+
 	assert(!rn->cnt);
 
 	scache = *sn;
 	rcache = *rn;
 
 #ifdef EOS_EDF
-	//dl_head = cos_faa(conn->src_info->head, 0);
-	//if (dl_head == conn->src_info->tail) return -1;
 	dst_output = get_output_ring(dst);
-	if (conn->dst_info->empty_flag) {
+	if (dst_info->empty_flag) {
 		if (dst_output->pkt_cnt == 0) {
-			conn->dst_info->deadline = EOS_MAX_DEADLINE;
-			conn->dst_info->empty_flag = 0;
+			dst_info->deadline = EOS_MAX_DEADLINE;
+			dst_info->empty_flag = 0;
 		}
 	}
 
-	conn->src_info->deadline = conn->src_info->dl_ring[conn->src_info->tail & EOS_RING_MASK].dl;
+	dl_tail &= EOS_RING_MASK;
 
-	if ((conn->src_info->deadline - (unsigned long long)OFFSET * (unsigned long long)100 * (unsigned long long)2700) > conn->dst_info->deadline) {
+	if (src_info->info_idx < EOS_MAX_CHAIN_NUM) {
+		if (dl_ring[dl_tail].state == DL_RING_USED) {
+			src_info->deadline = dl_ring[dl_tail].dl;
+			assert(scache.deadline == src_info->deadline);
+		} else {
+			src_info->deadline = EOS_MAX_DEADLINE;
+		}
+		assert(scache.deadline == src_info->deadline);
+	}
+
+	assert(src_info->deadline);
+
+	if ((src_info->deadline - (unsigned long long)OFFSET * (unsigned long long)2700) > dst_info->deadline) {
 		return -1;
 		assert(0);
 	}
@@ -302,34 +246,29 @@ loop:
 	src->mca_head++;
 
 	fh = cos_faa(&(src->pkt_cnt), -sn->cnt);
-	//fh = cos_faa(&(get_output_ring((void *)dst)->pkt_cnt), 1);
 	fh = cos_faa(&(dst->pkt_cnt), sn->cnt);
 
 #ifdef EOS_EDF
-	if (conn->dst_info->deadline > conn->src_info->deadline) {
-		dst_tid = conn->dst_info->info_idx - EOS_MAX_CHAIN_NUM;
-		conn->dst_info->deadline = conn->src_info->deadline;
+	if (dst_info->deadline > src_info->deadline) {
+		dst_tid = dst_info->info_idx - EOS_MAX_CHAIN_NUM;
+		assert(src_info->info_idx < EOS_MAX_CHAIN_NUM);
+
+		assert(dst_info->deadline == EOS_MAX_DEADLINE);
+		dst_info->deadline = src_info->deadline;
 		
-	 	ret = eos_thd_wakeup_with_dl(dst->coreid, dst_tid, conn->dst_info->deadline);
+	 	assert(dst_info->deadline);
+		now = ps_tsc();
+		assert(conn->dst_info->deadline > now);
+		assert(dst_info->deadline != EOS_MAX_DEADLINE);
+		assert(src_info->deadline != EOS_MAX_DEADLINE);
+		ret = eos_thd_wakeup_with_dl(dst->coreid, dst_tid, dst_info->deadline);
 		assert(ret == 0);
 	}
 
-	if (conn->src_info->info_idx < EOS_MAX_CHAIN_NUM) {
+	if (src_info->info_idx < EOS_MAX_CHAIN_NUM) {
 		assert(sn->cnt != 0);
-		dl_tail = cos_faa(&(conn->src_info->tail), sn->cnt);
-		dl_head  = cos_faa(&(conn->src_info->head), 0);
-		//assert(dl_head >= (dl_tail + sn->cnt));
-		/*if (dl_head < dl_tail + sn->cnt || dl_head - dl_tail >= 127) {
-			printc("      dlhead:   %d\n", dl_head);
-			printc("      dltail:   %d\n", dl_tail + sn->cnt);
-			printc("      mcahead:  %d\n", src->mca_head);
-			printc("      ringtail: %d\n", src->tail);
-			assert(0);
-		}*/
-		if (conn->src_info->tail < dl_head) {
-			dl_tail = conn->src_info->tail & EOS_RING_MASK;
-			conn->src_info->deadline = conn->src_info->dl_ring[dl_tail].dl;
-		}
+		dl_tail = cos_faa(&(src_info->tail), 1);
+		dl_ring[dl_tail].state = DL_RING_FREE;
 	}
 #endif
 
@@ -368,7 +307,7 @@ mca_run(void *d)
 struct mca_conn *
 mca_conn_create(struct eos_ring *src, struct eos_ring *dst, int src_thdid, int dst_thdid)
 {
-	struct mca_conn *conn;
+	volatile struct mca_conn *conn;
 
 	conn = mca_conn_alloc();
 	assert(conn);
@@ -376,7 +315,9 @@ mca_conn_create(struct eos_ring *src, struct eos_ring *dst, int src_thdid, int d
 	conn->dst_ring = dst;
 #ifdef EOS_EDF
 	conn->src_info = mca_info_get(src_thdid);
+	assert(conn->src_info->info_idx == src_thdid);
 	conn->dst_info = mca_info_get(dst_thdid);
+	assert(conn->dst_info->info_idx == dst_thdid);
 #endif
 	conn->used     = 1;
 	mca_push_l(&lh, conn);
@@ -408,4 +349,5 @@ mca_init(struct cos_compinfo *parent_cinfo)
 		ck_ring_init(__mca_get_ring(i), MCA_XCPU_RING_SIZE);
 	}
 	memset(global_info, 0, sizeof(struct mca_info) * (EOS_MAX_CHAIN_NUM + MCA_CONN_MAX_NUM));
+	memset(global_dl, 0, sizeof(struct dl) * MCA_CONN_MAX_NUM * EOS_RING_SIZE);
 }
