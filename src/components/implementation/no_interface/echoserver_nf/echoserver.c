@@ -376,7 +376,7 @@ cos_net_interrupt(int len, void * pkt)
 	}
 
 	assert(p);
-	/* FIXME: its a hack herer */
+	/* FIXME: it's a hack here */
 	if (p->ref != 0) {
 		pbuf_free(p);
 	}
