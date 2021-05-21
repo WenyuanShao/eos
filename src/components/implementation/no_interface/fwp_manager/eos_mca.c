@@ -8,24 +8,17 @@
 #include "eos_utils.h"
 
 #define MCA_CONN_MAX_NUM 2048
-/* 100us */
-#define OFFSET           50
+
+#define OFFSET_US        1000
 
 #define MCA_BURST_CNT    (32/EOS_PKT_PER_ENTRY)
 
 static struct mca_conn *fl, *lh;
 static volatile struct mca_info global_info[MCA_CONN_MAX_NUM + EOS_MAX_CHAIN_NUM];
-static volatile struct dl global_dl[MCA_CONN_MAX_NUM][EOS_RING_SIZE];
+int info_idx = 0;
+struct mca_global mca_global_data;
 
-cycles_t
-mca_info_dl_get(int cid)
-{
-	volatile struct mca_info *ret;
-
-	ret = &global_info[cid];
-	return ret->dl_ring[ret->tail & EOS_RING_MASK].dl;
-}
-
+int skip_cnt = 0;
 int
 mca_xcpu_process(void)
 {
@@ -42,6 +35,7 @@ mca_xcpu_process(void)
 				global_info[idx].empty_flag = 1;
 				continue;
 			}
+			//printc("SET TO MAX DEADLINE\n");
 			global_info[idx].deadline = EOS_MAX_DEADLINE;
 			num++;
 		}
@@ -60,43 +54,17 @@ mca_info_get(int tid)
 	ret->info_idx = tid;
 	if (tid < EOS_MAX_CHAIN_NUM) {
 		assert(!ret->used);
-		assert(ret->head == 0);
-		assert(ret->tail == 0);
-		ret->head = ret->tail = 0;
 		ret->info_idx = tid;
 		ret->deadline = EOS_MAX_DEADLINE;
-		ret->dl_ring  = global_dl[tid];
 		ret->used = 1;
 		return ret;
 	}
 	if (!ret->used) {
 		ret->info_idx = tid;
 		ret->deadline = EOS_MAX_DEADLINE;
-		ret->dl_ring  = NULL;
 		ret->used = 1;
 	}
 	return ret;
-}
-
-int
-mca_dl_enqueue(int cid, cycles_t deadline, int test)
-{
-	volatile int head, tail;
-	cycles_t arrive = 0, now = 0;
-
-	assert(cid < EOS_MAX_CHAIN_NUM);
-
-	volatile struct mca_info* curr_info = &global_info[cid];
-	assert(curr_info->dl_ring);
-	head = cos_faa(&(curr_info->head), 1);
-	assert((head - curr_info->tail) <= EOS_RING_SIZE + 1);
-
-	curr_info->dl_ring[head & EOS_RING_MASK].dl = deadline;
-	assert(curr_info->dl_ring[head & EOS_RING_MASK].dl);
-
-	curr_info->dl_ring[head & EOS_RING_MASK].state = DL_RING_USED;
-
-	return curr_info->head;
 }
 
 static inline void
@@ -164,31 +132,35 @@ mca_transfer(struct eos_ring_node *sn, struct eos_ring_node *rn)
 	rn->state = PKT_RECV_READY;
 }
 
+unsigned long long nnnn;
 int test = 0;
 static inline int
 mca_process(struct mca_conn *conn, int burst)
 {
-	struct eos_ring *src, *dst, *dst_output;
+	struct eos_ring *src, *dst, *dst_output, *dst_input;
 	struct mca_info *dst_info, *src_info;
-	struct dl *dl_ring;
 	volatile struct eos_ring_node *rn, *sn;
 	struct eos_ring_node rcache, scache;
-	int fh, r = 0;
+	int fh1, fh, r = 0;
 	thdid_t dst_tid;
-	unsigned long long start, end, now;
-	int pkt_cnt, ret, dl_tail, dl_head, cnter=0;
+	unsigned long long start, end;
+	int pkt_cnt, ret, cnter=0;
+	unsigned long long tmp = (unsigned long long)500 * (unsigned long long)1000 * (unsigned long long)2100;
+	unsigned long long curr;
+	int set = 0;
 
 	start = ps_tsc();
 loop:
 	src = conn->src_ring;
 	dst = conn->dst_ring;
 	sn  = GET_RING_NODE(src, src->mca_head & EOS_RING_MASK);
-	dl_ring = src_info->dl_ring;
-	dl_tail = src_info->tail;
 #ifdef EOS_EDF
-	int num = mca_xcpu_process();
+	src_info = conn->src_info;
+	dst_info = conn->dst_info;
 #endif
 	if (unlikely(sn->state != PKT_SENT_READY)) {
+		cnter++;
+		assert(cnter <= 1);
 		return -1;
 	}
 
@@ -200,43 +172,50 @@ loop:
 	}
 
 	if (sn->cnt == 0) {
+		assert(0);
 		sn->state = PKT_SENT_DONE;
 		src->mca_head++;
 		return -1;
 	}
-
+	//assert(sn->cnt);
 	assert(!rn->cnt);
 
 	scache = *sn;
 	rcache = *rn;
 
 #ifdef EOS_EDF
+	int num = mca_xcpu_process();
 	dst_output = get_output_ring(dst);
+	dst_input = get_input_ring(dst);
 	if (dst_info->empty_flag) {
-		if (dst_output->pkt_cnt == 0) {
+		if (dst_output->pkt_cnt == 0 && dst_input->pkt_cnt == 0) {
 			dst_info->deadline = EOS_MAX_DEADLINE;
 			dst_info->empty_flag = 0;
 		}
 	}
 
-	dl_tail &= EOS_RING_MASK;
-
 	if (src_info->info_idx < EOS_MAX_CHAIN_NUM) {
-		if (dl_ring[dl_tail].state == DL_RING_USED) {
-			src_info->deadline = dl_ring[dl_tail].dl;
-			assert(scache.deadline == src_info->deadline);
-		} else {
-			src_info->deadline = EOS_MAX_DEADLINE;
-		}
-		assert(scache.deadline == src_info->deadline);
+		src_info->deadline = scache.deadline;
+		assert(src_info->deadline < EOS_MAX_DEADLINE);
+		curr = ps_tsc();
+		assert(src_info->deadline <= (tmp+curr));
 	}
 
 	assert(src_info->deadline);
-
-	if ((src_info->deadline - (unsigned long long)OFFSET * (unsigned long long)2700) > dst_info->deadline) {
-		return -1;
-		assert(0);
+	/* this is a hack */
+	if (src_info->deadline == EOS_MAX_DEADLINE) {
+		src_info->deadline = scache.deadline;
 	}
+	assert(src_info->deadline < EOS_MAX_DEADLINE);
+
+	if (src_info->info_idx >= EOS_MAX_CHAIN_NUM && src_info->deadline > dst_info->deadline) {
+		return -1;
+	}
+
+	if ((src_info->deadline - (unsigned long long)OFFSET_US * (unsigned long long)2100) > dst_info->deadline || r>1) {
+		return -1;
+	}
+	assert(r <= 1);
 #endif
 	mca_transfer(&scache, &rcache);
 	sn->state = PKT_SENT_DONE;
@@ -245,35 +224,39 @@ loop:
 	dst->free_head++;
 	src->mca_head++;
 
-	fh = cos_faa(&(src->pkt_cnt), -sn->cnt);
+	fh1 = cos_faa(&(src->pkt_cnt), -sn->cnt);
 	fh = cos_faa(&(dst->pkt_cnt), sn->cnt);
 
 #ifdef EOS_EDF
-	if (dst_info->deadline > src_info->deadline) {
-		dst_tid = dst_info->info_idx - EOS_MAX_CHAIN_NUM;
-		assert(src_info->info_idx < EOS_MAX_CHAIN_NUM);
 
+	dst_tid = dst_info->info_idx - EOS_MAX_CHAIN_NUM;
+	if (dst_info->deadline > src_info->deadline) {
+		
+		assert(src_info->deadline < EOS_MAX_DEADLINE);
 		assert(dst_info->deadline == EOS_MAX_DEADLINE);
 		dst_info->deadline = src_info->deadline;
-		
+
 	 	assert(dst_info->deadline);
-		now = ps_tsc();
-		assert(conn->dst_info->deadline > now);
-		assert(dst_info->deadline != EOS_MAX_DEADLINE);
-		assert(src_info->deadline != EOS_MAX_DEADLINE);
+
+		curr = ps_tsc();
+		assert(dst_info->deadline <= (curr+tmp));
 		ret = eos_thd_wakeup_with_dl(dst->coreid, dst_tid, dst_info->deadline);
 		assert(ret == 0);
-	}
-
-	if (src_info->info_idx < EOS_MAX_CHAIN_NUM) {
-		assert(sn->cnt != 0);
-		dl_tail = cos_faa(&(src_info->tail), 1);
-		dl_ring[dl_tail].state = DL_RING_FREE;
+	} else {
+		curr = ps_tsc();
+		assert(src_info->deadline != EOS_MAX_DEADLINE);
+		assert(dst_info->deadline != EOS_MAX_DEADLINE);
+		assert(dst_info->deadline <= (curr+tmp));
+		ret = eos_thd_wakeup_with_dl(dst->coreid, dst_tid, dst_info->deadline);
+		//printc("need wakeup\n");
+		assert(ret == 0);
 	}
 #endif
 
 	end = ps_tsc();
-	if ((++r) < burst) goto loop;
+	if ((++r) < burst) {
+		goto loop;
+	}
 	return r;
 }
 
@@ -349,5 +332,4 @@ mca_init(struct cos_compinfo *parent_cinfo)
 		ck_ring_init(__mca_get_ring(i), MCA_XCPU_RING_SIZE);
 	}
 	memset(global_info, 0, sizeof(struct mca_info) * (EOS_MAX_CHAIN_NUM + MCA_CONN_MAX_NUM));
-	memset(global_dl, 0, sizeof(struct dl) * MCA_CONN_MAX_NUM * EOS_RING_SIZE);
 }
